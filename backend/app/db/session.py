@@ -57,5 +57,7 @@ def session_scope() -> Iterator[Session]:
 def init_db() -> None:
     """Cria as tabelas (MVP; em produção usaríamos Alembic)."""
     from app.db import models  # noqa: F401  (registra os modelos)
+    from app.db.search import init_search
 
     Base.metadata.create_all(bind=engine)
+    init_search(engine)  # índice full-text da Fase 4

@@ -74,7 +74,8 @@ def test_ferramentas_da_fase_3_estao_disponiveis(client):
     tools = {t["id"]: t for t in client.get("/api/meta/tools").json()["tools"]}
     for tool_id in ("redact", "number", "outline", "metadata", "integrity"):
         assert tools[tool_id]["available"] is True, tool_id
-    assert tools["search"]["available"] is False, "fase seguinte continua bloqueada"
+    # com a Fase 4 concluída, nenhum card do catálogo fica bloqueado
+    assert all(t["available"] for t in tools.values())
 
 
 def test_scan_lista_dados_sensiveis_para_revisao(client):

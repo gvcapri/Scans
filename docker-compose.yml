@@ -1,0 +1,90 @@
+# JudiFiles — compose de produção (api + worker + redis + postgres + frontend)
+#
+# Rodar:
+#   cp .env.example .env   # ajuste DATABASE_URL, STORAGE_SECRET, etc.
+#   docker compose up --build -d
+#   docker compose logs -f
+#
+# Versões:
+#   postgres: 16
+#   redis:     7
+#   node:      20-alpine
+#   python:    3.11-slim
+#
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lexscan}
+      POSTGRES_USER: ${POSTGRES_USER:-lexscan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lexscan-dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://lexscan:lexscan-dev@db:5432/lexscan}
+      STORAGE_ROOT: /data/storage
+      STORAGE_SECRET: ${STORAGE_SECRET}
+      TASK_BACKEND: ${TASK_BACKEND:-celery}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      REDIS_URL: redis://redis:6379/0
+      AUTH_RATE_LIMIT_PER_MIN: ${AUTH_RATE_LIMIT_PER_MIN:-10}
+      LOCAL_DEV_PASSWORD: ${LOCAL_DEV_PASSWORD:-lexscan-dev}
+      PURGE_INTERVAL_MINUTES: ${PURGE_INTERVAL_MINUTES:-30}
+      RETENTION_HOURS: ${RETENTION_HOURS:-24}
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - storage_data:/data/storage
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://lexscan:lexscan-dev@db:5432/lexscan}
+      STORAGE_ROOT: /data/storage
+      STORAGE_SECRET: ${STORAGE_SECRET}
+      TASK_BACKEND: ${TASK_BACKEND:-celery}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      AUTH_RATE_LIMIT_PER_MIN: ${AUTH_RATE_LIMIT_PER_MIN:-10}
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - storage_data:/data/storage
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
+  storage_data:

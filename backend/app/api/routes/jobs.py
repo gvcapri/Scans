@@ -42,6 +42,14 @@ KIND_RULES: dict[str, dict] = {
         "max": 20,
         "exts": {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".docx", ".txt"},
     },
+    "batch": {
+        "min": 1,
+        "max": 50,
+        "exts": {
+            ".zip", ".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff",
+            ".bmp", ".webp", ".doc", ".docx", ".odt", ".rtf", ".docm",
+        },
+    },
 }
 ALLOWED_KINDS = set(KIND_RULES)
 
@@ -53,7 +61,7 @@ class JobCreate(BaseModel):
         ...,
         description=(
             "ocr | blind | merge | split | convert | compress | redact | "
-            "number | outline | metadata | integrity"
+            "number | outline | metadata | integrity | batch"
         ),
     )
     file_ids: list[str] = Field(..., min_length=1, description="Arquivos de entrada")

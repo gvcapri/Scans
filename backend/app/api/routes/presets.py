@@ -19,8 +19,41 @@ from app.services.compress import BUILTIN_PRESETS
 router = APIRouter(prefix="/presets", tags=["perfis"])
 
 # Ferramentas que hoje usam perfis salvos.
-PRESET_TOOLS = {"compress"}
+PRESET_TOOLS = {"compress", "batch"}
 MAX_PRESETS_PER_TOOL = 50
+
+# Fluxos de lote embutidos (Fase 4): sequências prontas de passos.
+BUILTIN_FLOWS: list[dict] = [
+    {
+        "id": "ocr",
+        "name": "Digitalizar (OCR)",
+        "hint": "PDF/imagem escaneada → PDF pesquisável, 300 DPI.",
+        "options": {"steps": [{"kind": "ocr", "options": {"output": "pdf", "dpi": 300}}]},
+    },
+    {
+        "id": "tribunal",
+        "name": "Pronto para o tribunal (OCR → Comprimir)",
+        "hint": "Digitaliza e já reduz para 10 MB com divisão automática.",
+        "options": {
+            "steps": [
+                {"kind": "ocr", "options": {"output": "pdf", "dpi": 300}},
+                {"kind": "compress", "options": {"limit_mb": 10, "quality": "ebook", "split": True}},
+            ]
+        },
+    },
+    {
+        "id": "texto",
+        "name": "Extrair texto (→ TXT)",
+        "hint": "Converte todos os PDFs do lote em .txt.",
+        "options": {"steps": [{"kind": "convert", "options": {"target": "txt"}}]},
+    },
+    {
+        "id": "blindar",
+        "name": "Blindar PDFs",
+        "hint": "Achata em imagem de alta resolução (acaba com edição).",
+        "options": {"steps": [{"kind": "blind", "options": {"dpi": 300, "jpeg_quality": 75}}]},
+    },
+]
 
 
 def _serialize(preset: ToolPreset) -> dict:
@@ -35,6 +68,18 @@ def _serialize(preset: ToolPreset) -> dict:
 
 
 def _builtins(tool: str) -> list[dict]:
+    if tool == "batch":
+        return [
+            {
+                "id": f"builtin:{flow['id']}",
+                "name": flow["name"],
+                "tool": tool,
+                "builtin": True,
+                "hint": flow["hint"],
+                "options": flow["options"],
+            }
+            for flow in BUILTIN_FLOWS
+        ]
     if tool != "compress":
         return []
     return [
@@ -58,7 +103,7 @@ def _builtins(tool: str) -> list[dict]:
 class PresetCreate(BaseModel):
     """Payload de criação de perfil."""
 
-    tool: str = Field(..., description="compress")
+    tool: str = Field(..., description="compress | batch")
     name: str = Field(..., min_length=1, max_length=60, description="Nome do perfil")
     options: dict = Field(default_factory=dict, description="Opções da ferramenta")
 

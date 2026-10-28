@@ -16,6 +16,7 @@ os.environ.setdefault("DATABASE_URL", f"sqlite:///{_TEST_ROOT / 'test.db'}")
 os.environ.setdefault("STORAGE_ROOT", str(_TEST_ROOT / "storage"))
 os.environ.setdefault("STORAGE_SECRET", "segredo-de-teste-somente-0123456789")
 os.environ.setdefault("TASK_BACKEND", "local")
+os.environ.setdefault("AUTH_RATE_LIMIT_PER_MIN", "100000")  # testes batem muito no login
 os.environ.setdefault("TESSDATA_PREFIX", str(Path(__file__).resolve().parents[2] / "tessdata"))
 
 import pytest  # noqa: E402
@@ -71,6 +72,12 @@ def text_pdf(tmp_path_factory) -> Path:
     doc.save(out)
     doc.close()
     return out
+
+
+@pytest.fixture(scope="session")
+def samples_dir() -> Path:
+    """Amostras versionadas em ./samples (PDFs de exemplo)."""
+    return REPO_ROOT / "samples"
 
 
 @pytest.fixture()

@@ -7,6 +7,7 @@ outro (o storage também só acessa a pasta do próprio usuário).
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import tempfile
 import urllib.parse
 import uuid
@@ -21,10 +22,13 @@ from app.api.deps import current_user, owned_or_404
 from app.core.config import settings
 from app.db.models import StoredFile, User
 from app.db.session import get_db
+from app.services.antivirus import scan_stream
+from app.services.indexing import drop_from_index, index_from_storage
 from app.services.ocr import render_preview
 from app.services.storage import get_storage
 from app.services.validation import validate_upload
 
+log = logging.getLogger("lexscan.files")
 router = APIRouter(prefix="/files", tags=["arquivos"])
 
 _READ_CHUNK = 1024 * 1024
@@ -39,6 +43,7 @@ def _serialize(row: StoredFile) -> dict:
         "sha256": row.sha256,
         "role": row.role,
         "job_id": row.job_id,
+        "case_folder_id": row.case_folder_id,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
 
@@ -69,6 +74,10 @@ def upload_files(
             max_bytes=max_bytes,
         )
 
+        # antivírus opcional (Fase 5): varre antes de tocar o storage
+        scan_stream(stream, filename=info.safe_name)
+        stream.seek(0)
+
         file_id = uuid.uuid4().hex
         meta = get_storage().save_stream(user.id, stream, file_id, info.ext)
 
@@ -88,6 +97,14 @@ def upload_files(
     db.commit()
     for row in created:
         db.refresh(row)
+
+    # alimenta o índice de busca full-text (best-effort: nunca falha o upload)
+    for row in created:
+        try:
+            index_from_storage(row.id, user.id, row.original_name)
+        except Exception:
+            log.warning("Não foi possível indexar %s", row.original_name, exc_info=True)
+
     return [_serialize(r) for r in created]
 
 
@@ -190,4 +207,5 @@ def delete_file(
         get_storage().delete(user.id, file_id)
         row.deleted_at = dt.datetime.now(dt.timezone.utc)
         db.commit()
+        drop_from_index(file_id)
     return {"ok": True, "id": file_id}

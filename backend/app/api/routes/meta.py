@@ -105,7 +105,7 @@ TOOLS = [
         "name": "Pesquisa em acervo",
         "description": "Busca textual em todos os documentos, com destaque.",
         "phase": 4,
-        "available": False,
+        "available": True,
         "route": "/search",
     },
     {
@@ -113,7 +113,7 @@ TOOLS = [
         "name": "Comparador",
         "description": "Diferenças entre duas versões lado a lado.",
         "phase": 4,
-        "available": False,
+        "available": True,
         "route": "/compare",
     },
     {
@@ -121,7 +121,7 @@ TOOLS = [
         "name": "Processamento em lote",
         "description": "Pasta/ZIP + fluxo reutilizável, download em ZIP.",
         "phase": 4,
-        "available": False,
+        "available": True,
         "route": "/batch",
     },
 ]

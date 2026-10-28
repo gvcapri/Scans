@@ -1,4 +1,4 @@
-"""Verificação no navegador dos fluxos principais do LexScan (Fases 1 a 3).
+"""Verificação no navegador dos fluxos principais do LexScan (Fases 1 a 4).
 
 Abre o app com Playwright/Chromium, executa de verdade:
   1. painel + catálogo de ferramentas
@@ -13,7 +13,11 @@ Abre o app com Playwright/Chromium, executa de verdade:
  10. numeração Bates + marca d'água
  11. sumário/índice com nomeação de anexos + bookmarks
  12. certificado de integridade (SHA-256 + ICP-Brasil)
- 13. histórico, tema escuro e layout mobile
+ 13. busca full-text com destaque do trecho
+ 14. comparador de versões lado a lado
+ 15. processamento em lote (fluxo pronto → ZIP)
+ 16. pastas de processo (criar, mover arquivo, detalhe)
+ 17. histórico, tema escuro e layout mobile
 e grava evidências em ./evidence.
 
 Uso (com backend :8000 e frontend :5173 rodando):
@@ -22,6 +26,7 @@ Uso (com backend :8000 e frontend :5173 rodando):
 
 from __future__ import annotations
 
+import io
 import sys
 from pathlib import Path
 
@@ -69,7 +74,7 @@ def main() -> int:
         page.wait_for_selector("text=Ferramentas")
         tools = page.request.get(f"{BASE}/api/meta/tools").json()["tools"]
         cards = page.locator("button:has-text('Disponível')").count()
-        check("painel abre com o catálogo", cards >= 11, f"{cards} ferramentas ativas de {len(tools)}")
+        check("painel abre com o catálogo", cards >= 14, f"{cards} ferramentas ativas de {len(tools)}")
         page.screenshot(path=str(EVID / "01-painel.png"), full_page=True)
 
         # ------------------------------------------------------------- 2. OCR
@@ -462,15 +467,113 @@ def main() -> int:
         else:
             check("certificado baixado", False, "sem saída no job")
 
-        # ------------------------------------------------- 13. histórico
+        # ------------------------------------------- 13. pesquisa (Fase 4)
+        page.get_by_role("button", name="Painel", exact=True).click()
+        page.wait_for_selector("text=Ferramentas")
+        page.locator("button:has-text('Pesquisa em acervo')").first.click()
+        page.wait_for_selector("text=Busca textual")
+        page.fill("#busca-q", "honorário")
+        page.get_by_role("button", name="Buscar").click()
+        page.wait_for_selector("mark", timeout=20000)
+        marcas = page.locator("mark").count()
+        check("busca destaca o trecho encontrado", marcas >= 1, f"{marcas} marcações")
+        page.screenshot(path=str(EVID / "17-pesquisa.png"), full_page=True)
+
+        page.fill("#busca-q", "zzeettxxyy inexistente")
+        page.get_by_role("button", name="Buscar").click()
+        page.wait_for_selector("text=Nenhum documento encontrado", timeout=15000)
+        check("busca sem resultado mostra estado vazio", True)
+
+        # ---------------------------------------- 14. comparador (Fase 4)
+        page.get_by_role("button", name="Painel", exact=True).click()
+        page.wait_for_selector("text=Ferramentas")
+        page.locator("button:has-text('Comparador')").first.click()
+        page.wait_for_selector("text=Comparar versões")
+        page.set_input_files(
+            "input[type=file]",
+            [
+                str(ROOT / "samples" / "contrato.pdf"),
+                str(ROOT / "samples" / "contrato_v2.pdf"),
+            ],
+        )
+        page.wait_for_function(
+            "() => document.querySelectorAll('#cmp-left option').length > 1",
+            timeout=20000,
+        )
+        arquivos = page.request.get(f"{BASE}/api/files").json()
+        v1 = next(f["id"] for f in arquivos if f["name"] == "contrato.pdf")
+        v2 = next(f["id"] for f in arquivos if f["name"] == "contrato_v2.pdf")
+        page.select_option("#cmp-left", v1)
+        page.select_option("#cmp-right", v2)
+        page.get_by_role("button", name="Comparar versões").click()
+        page.wait_for_selector("text=Alteradas", timeout=30000)
+        alteradas = page.locator("span:has-text('alterada')").count()
+        check("comparador mostra páginas alteradas", alteradas >= 1,
+              f"{alteradas} página(s) com diff")
+        tem_verde = page.locator("div.bg-emerald-50").count()
+        check("adições destacadas em verde", tem_verde >= 1, f"{tem_verde} bloco(s)")
+        page.screenshot(path=str(EVID / "18-comparador.png"), full_page=True)
+
+        # ---------------------------------------------- 15. lote (Fase 4)
+        page.get_by_role("button", name="Painel", exact=True).click()
+        page.wait_for_selector("text=Ferramentas")
+        page.locator("button:has-text('Processamento em lote')").first.click()
+        page.wait_for_selector("text=Processar lote")
+        page.set_input_files(
+            "input[type=file]",
+            [
+                str(ROOT / "samples" / "contrato.pdf"),
+                str(ROOT / "samples" / "dados_sensiveis.pdf"),
+            ],
+        )
+        page.wait_for_selector("text=SHA-256", timeout=20000)
+        page.select_option("#batch-preset", label="Extrair texto (→ TXT)")
+        page.screenshot(path=str(EVID / "19-lote-opcoes.png"), full_page=True)
+        page.get_by_role("button", name="Processar lote").click()
+        page.wait_for_selector("a:has-text('Baixar ZIP')", timeout=240000)
+        check("lote conclui e oferece o ZIP", True)
+        page.screenshot(path=str(EVID / "20-lote-concluido.png"), full_page=True)
+
+        job = _latest_job(page, "batch")
+        if job and job["output_file_ids"]:
+            body = _download(page, job["output_file_ids"][0], "lote_processado.zip")
+            import zipfile
+
+            with zipfile.ZipFile(io.BytesIO(body)) as zf:
+                nomes = zf.namelist()
+            check(
+                "ZIP do lote tem um .txt por PDF",
+                len(nomes) == 2 and all(n.endswith(".txt") for n in nomes),
+                str(nomes),
+            )
+        else:
+            check("ZIP do lote baixado", False, "sem saída no job")
+
+        # --------------------------------------------- 16. pastas (Fase 4)
+        page.get_by_role("button", name="Pastas", exact=True).click()
+        page.wait_for_selector("text=Pastas de processo")
+        page.fill("#case-name", "E2E Cliente Honorários")
+        page.fill("#case-cnj", "0000001-10.2026.8.01.0001")
+        page.get_by_role("button", name="Criar pasta").click()
+        page.wait_for_selector("text=Mover arquivo para esta pasta", timeout=15000)
+        check("pasta criada abre o detalhe", True, "E2E Cliente Honorários")
+
+        page.select_option("#case-move", index=1)
+        page.get_by_role("button", name="Mover", exact=True).click()
+        page.wait_for_selector("button:has-text('Retirar')", timeout=15000)
+        dentro = page.locator("button:has-text('Retirar')").count()
+        check("arquivo movido para a pasta", dentro >= 1, f"{dentro} arquivo(s)")
+        page.screenshot(path=str(EVID / "21-pastas.png"), full_page=True)
+
+        # ------------------------------------------------- 17. histórico
         page.get_by_role("button", name="Painel", exact=True).click()
         page.wait_for_selector("text=Ferramentas")
         page.get_by_role("button", name="Histórico", exact=True).click()
         page.wait_for_selector("text=Processamentos")
         page.wait_for_selector("li:has-text('Concluído')", timeout=20000)
         itens = page.locator("li:has-text('Concluído')").count()
-        check("histórico lista os processamentos", itens >= 11, f"{itens} concluídos")
-        page.screenshot(path=str(EVID / "17-historico.png"), full_page=True)
+        check("histórico lista os processamentos", itens >= 12, f"{itens} concluídos")
+        page.screenshot(path=str(EVID / "22-historico.png"), full_page=True)
 
         # ------------------------------------------------------- 5. tema/mobile
         page.get_by_role("button", name="Painel", exact=True).click()
@@ -479,13 +582,13 @@ def main() -> int:
         page.wait_for_timeout(400)
         escuro = page.evaluate("() => document.documentElement.classList.contains('dark')")
         check("tema escuro aplica", escuro)
-        page.screenshot(path=str(EVID / "18-tema-escuro.png"), full_page=True)
+        page.screenshot(path=str(EVID / "23-tema-escuro.png"), full_page=True)
         page.get_by_role("button", name="☀️ Claro").click()
 
         mobile = browser.new_page(viewport={"width": 390, "height": 844}, locale="pt-BR")
         mobile.goto(BASE, wait_until="networkidle")
         mobile.wait_for_selector("text=Ferramentas")
-        mobile.screenshot(path=str(EVID / "19-mobile.png"), full_page=True)
+        mobile.screenshot(path=str(EVID / "24-mobile.png"), full_page=True)
         check("layout responsivo renderiza no mobile", True)
 
         browser.close()

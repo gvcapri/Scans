@@ -47,7 +47,7 @@ export type ScanGroup = {
   value: string;
   count: number;
   pages: number[];
-};
+};;
 
 export type ScanResult = {
   file_id: string;
@@ -68,11 +68,88 @@ export type Preset = {
   created_at?: string | null;
 };
 
+export type SearchHit = {
+  file_id: string;
+  name: string;
+  snippet: string; // já vem com <mark>...
+  score: number;
+  size: number | null;
+  mime: string | null;
+  created_at: string | null;
+};
+
+export type SearchResponse = {
+  query: string;
+  total: number;
+  results: SearchHit[];
+};
+
+export type DiffOp = {
+  type: "equal" | "delete" | "insert" | "replace";
+  a: string[];
+  b: string[];
+};
+
+export type CompareResponse = {
+  file_a: { id: string; name: string; pages: number };
+  file_b: { id: string; name: string; pages: number };
+  summary: {
+    pages_compared: number;
+    pages_changed: number;
+    lines_added: number;
+    lines_removed: number;
+    only_a: number;
+    only_b: number;
+  };
+  pages: { index: number; changed: boolean; ops: DiffOp[] }[];
+};
+
+export type CaseFolder = {
+  id: string;
+  name: string;
+  process_number: string;
+  file_count: number;
+  created_at: string | null;
+};
+
+export type CaseDetail = CaseFolder & {
+  files: StoredFile[];
+  operations: {
+    id: string;
+    kind: string;
+    status: JobStatus;
+    message: string;
+    created_at: string | null;
+    finished_at: string | null;
+    files: number;
+  }[];
+};
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  two_factor_enabled: boolean;
+  authenticated?: boolean; // false = fallback de desenvolvimento
+};
+
+export type LoginResult =
+  | { token: string; user: AuthUser }
+  | { two_factor_required: true; challenge: string; expires_in: number };
+
 const BASE = "/api";
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
+    credentials: "same-origin", // envia/recebe o cookie httpOnly de sessão
     headers: { ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
@@ -84,13 +161,40 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* corpo não é JSON */
     }
-    throw new Error(detail);
+    throw new ApiError(res.status, detail);
   }
   return (await res.json()) as T;
 }
 
+const json = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export const auth = {
+  me: () => request<AuthUser>("/auth/me"),
+  login: (email: string, password: string) =>
+    request<LoginResult>("/auth/login", json({ email, password })),
+  login2fa: (challenge: string, code: string) =>
+    request<{ token: string; user: AuthUser }>("/auth/login/2fa", json({ challenge, code })),
+  register: (email: string, password: string) =>
+    request<{ token: string; user: AuthUser }>("/auth/register", json({ email, password })),
+  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  enable2fa: () => request<{ secret: string; uri: string; challenge: string }>("/auth/2fa/enable", { method: "POST" }),
+  confirm2fa: (challenge: string, code: string) =>
+    request<{ ok: boolean; two_factor_enabled: boolean }>("/auth/2fa/confirm", json({ challenge, code })),
+  disable2fa: (code: string) =>
+    request<{ ok: boolean; two_factor_enabled: boolean }>("/auth/2fa", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    }),
+};
+
 export const api = {
   health: () => request<{ status: string }>("/meta/health"),
+  auth,
   tools: () => request<{ tools: Tool[] }>("/meta/tools"),
   languages: () => request<OcrLanguages>("/meta/languages"),
 
@@ -132,6 +236,45 @@ export const api = {
     }),
   deletePreset: (id: string) =>
     request<{ ok: boolean }>(`/presets/${id}`, { method: "DELETE" }),
+
+  // ---------------- Fase 4 ----------------
+  search: (q: string, limit = 20) =>
+    request<SearchResponse>(
+      `/search?q=${encodeURIComponent(q)}&limit=${limit}`
+    ),
+  compare: (file_a: string, file_b: string) =>
+    request<CompareResponse>("/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_a, file_b }),
+    }),
+
+  listCases: () => request<CaseFolder[]>("/cases"),
+  createCase: (name: string, process_number = "") =>
+    request<CaseFolder>("/cases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, process_number }),
+    }),
+  getCase: (id: string) => request<CaseDetail>(`/cases/${id}`),
+  updateCase: (id: string, patch: { name?: string; process_number?: string }) =>
+    request<CaseFolder>(`/cases/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
+  deleteCase: (id: string) =>
+    request<{ ok: boolean }>(`/cases/${id}`, { method: "DELETE" }),
+  addCaseFiles: (id: string, file_ids: string[]) =>
+    request<{ ok: boolean; moved: number }>(`/cases/${id}/files`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_ids }),
+    }),
+  removeCaseFile: (id: string, file_id: string) =>
+    request<{ ok: boolean }>(`/cases/${id}/files/${file_id}`, {
+      method: "DELETE",
+    }),
 };
 
 export function formatSize(bytes: number): string {

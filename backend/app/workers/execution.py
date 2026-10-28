@@ -95,6 +95,12 @@ class JobContext:
             )
             db.add(row)
         self.output_ids.append(file_id)
+        try:
+            from app.services.indexing import index_stored_file
+
+            index_stored_file(file_id, self.user_id, row.original_name, path)
+        except Exception:
+            log.debug("Não foi possível indexar a saída do job", exc_info=True)
         return file_id
 
     # -------------------------------------------------------------- entradas
@@ -311,6 +317,19 @@ def _handle_integrity(ctx: JobContext) -> JobResult:
     )
 
 
+def _handle_batch(ctx: JobContext) -> JobResult:
+    from app.services.batch import BatchOptions, run_batch
+
+    opts = BatchOptions.from_dict(ctx.options)
+    inputs = ctx.inputs or ctx.materialize_inputs()
+    result = run_batch(inputs, ctx.workdir, opts, progress=ctx.progress)
+    return JobResult(
+        files=[result.file],
+        preview=result.preview,
+        message=f"{result.processed} arquivo(s) no lote",
+    )
+
+
 HANDLERS: dict[str, Callable[[JobContext], JobResult]] = {
     "ocr": _handle_ocr,
     "blind": _handle_blind,
@@ -323,6 +342,7 @@ HANDLERS: dict[str, Callable[[JobContext], JobResult]] = {
     "outline": _handle_outline,
     "metadata": _handle_metadata,
     "integrity": _handle_integrity,
+    "batch": _handle_batch,
 }
 
 

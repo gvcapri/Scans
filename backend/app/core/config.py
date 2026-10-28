@@ -79,6 +79,16 @@ class Settings(BaseSettings):
     secret_key: str = "dev-only-jwt-secret-troque-em-producao"
     rate_limit_per_min: int = 60
     clamav_enabled: bool = False
+    clamav_host: str = "127.0.0.1"
+    clamav_port: int = 3310
+
+    # --- Autenticação (Fase 5) ---
+    # limite de tentativas de login/registro por minuto (0 = desligado)
+    auth_rate_limit_per_min: int = 10
+    # senha do usuário local de DESENVOLVIMENTO (nunca usada em ENVIRONMENT=prod)
+    local_dev_password: str = "lexscan-dev"
+    # frequência do expurgo LGPD em segundo plano
+    purge_interval_minutes: int = 30
 
     # --- Corte de upload ---
     @property

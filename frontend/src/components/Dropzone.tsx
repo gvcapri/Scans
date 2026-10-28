@@ -4,12 +4,14 @@ type Props = {
   onFiles: (files: File[]) => void;
   disabled?: boolean;
   hint?: string;
+  /** extensões aceitas pelo seletor de arquivo (padrão: documentos) */
+  accept?: string;
 };
 
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,.tif,.tiff,.doc,.docx";
 
 /** Área de envio com arrastar e soltar + clique (acessível por teclado). */
-export default function Dropzone({ onFiles, disabled, hint }: Props) {
+export default function Dropzone({ onFiles, disabled, hint, accept }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
 
@@ -49,7 +51,7 @@ export default function Dropzone({ onFiles, disabled, hint }: Props) {
         ref={inputRef}
         type="file"
         multiple
-        accept={ACCEPT}
+        accept={accept ?? ACCEPT}
         className="sr-only"
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
