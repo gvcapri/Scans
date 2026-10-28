@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Aplicação
+.env
+storage/
+lexscan.db
+*.db
+
+# Evidências e temporários
+evidence/*.png
+tmp/
