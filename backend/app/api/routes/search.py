@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import current_user
 from app.db.models import StoredFile, User
 from app.core.features import is_feature_enabled
+from app.db.search import available as search_available
 from app.db.search import search as run_search
 from app.db.session import engine, get_db
 
@@ -26,7 +27,7 @@ def search(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ) -> dict:
-    if not is_feature_enabled("search"):
+    if not is_feature_enabled("search") or not search_available():
         raise HTTPException(
             status_code=503,
             detail={"code": "feature_disabled", "message": "Recurso temporariamente indisponível"},
