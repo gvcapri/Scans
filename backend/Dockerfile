@@ -1,29 +1,41 @@
 # JudiFiles — backend (FastAPI)
 #
-# Construção com cache (usar --build-arg PYDeps=... para repintar
-# requirements apenas quando mudarem):
+# Build a partir da RAIZ do repositório:
 #   docker build -t judifiles-api -f backend/Dockerfile .
+#   docker build --build-arg ENABLE_OCR=true -t judifiles-api -f backend/Dockerfile .
 #
-# Rodar:
-#   docker run --env-file .env -p 8000:8000 judifiles-api
-#
-FROM python:3.11-slim AS build
+# ENABLE_OCR=true instala o binário tesseract-ocr (+ pacote de idioma por)
+# na imagem; o FEATURE_OCR continua decidindo em runtime se a rota responde
+# ou devolve 503. Nesta VM de 1 GB o compose builda com ENABLE_OCR=false.
+
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# instala dependências do sistema (se precisar de libs C extras)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+ARG ENABLE_OCR=false
 
-# copiar requirements e instalar (cached)
+# gcc só durante o pip install (libs C de dependências sem wheel);
+# tesseract entra somente quando ENABLE_OCR=true.
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc \
+        $([ "$ENABLE_OCR" = "true" ] && echo "tesseract-ocr tesseract-ocr-por") \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y gcc \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # app
 COPY backend /app
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# usuário não-root (o volume de storage é criado/chownado no compose)
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /data/storage \
+    && chown -R appuser:appuser /data/storage
+USER appuser
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 1 worker, sem reload (VM de 1 GB)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-access-log"]

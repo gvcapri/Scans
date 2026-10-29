@@ -1,90 +1,193 @@
-# JudiFiles — compose de produção (api + worker + redis + postgres + frontend)
+# JudiFiles — compose principal (base da VM de produção e da sua máquina).
 #
-# Rodar:
-#   cp .env.example .env   # ajuste DATABASE_URL, STORAGE_SECRET, etc.
-#   docker compose up --build -d
-#   docker compose logs -f
+# Topologia: cliente -> caddy (80/443, HTTPS automático) -> frontend (nginx)
+#            -> /api/ -> api:8000. Nada além de 80/443 é publicado no host.
 #
-# Versões:
-#   postgres: 16
-#   redis:     7
-#   node:      20-alpine
-#   python:    3.11-slim
+# Serviços padrão: db, api, frontend, caddy.
+# Perfil opcional "worker": redis + worker Celery (TASK_BACKEND=celery).
+#   docker compose --profile worker up -d
 #
-version: "3.9"
+# Pré-requisito (falha fechada sem isso):
+#   cp .env.example .env   # defina POSTGRES_PASSWORD e STORAGE_SECRET (32+)
+#
+# Override de produção (mesmo Caddyfile):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 services:
   db:
     image: postgres:16
+    # configuração leve para a VM de 1 GB
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=20
+      - -c
+      - work_mem=4MB
+      - -c
+      - max_wal_size=256MB
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lexscan}
       POSTGRES_USER: ${POSTGRES_USER:-lexscan}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lexscan-dev}
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
     volumes:
       - pg_data:/var/lib/postgresql/data
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    mem_limit: 320m
     restart: unless-stopped
 
   api:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        # nesta VM o OCR fica desligado; OCR=true também exige FEATURE_OCR=true
+        ENABLE_OCR: ${ENABLE_OCR:-false}
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://lexscan:lexscan-dev@db:5432/lexscan}
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lexscan}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lexscan}
       STORAGE_ROOT: /data/storage
-      STORAGE_SECRET: ${STORAGE_SECRET}
-      TASK_BACKEND: ${TASK_BACKEND:-celery}
-      CELERY_BROKER_URL: redis://redis:6379/0
-      REDIS_URL: redis://redis:6379/0
+      STORAGE_SECRET: ${STORAGE_SECRET:?defina STORAGE_SECRET no .env com 32+ caracteres}
+      # padrão desta VM: tarefas no próprio processo (sem Redis/worker)
+      TASK_BACKEND: ${TASK_BACKEND:-local}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       AUTH_RATE_LIMIT_PER_MIN: ${AUTH_RATE_LIMIT_PER_MIN:-10}
-      LOCAL_DEV_PASSWORD: ${LOCAL_DEV_PASSWORD:-lexscan-dev}
-      PURGE_INTERVAL_MINUTES: ${PURGE_INTERVAL_MINUTES:-30}
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-120}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://judifiles.com.br}
+      # LGPD
       RETENTION_HOURS: ${RETENTION_HOURS:-24}
+      PURGE_INTERVAL_MINUTES: ${PURGE_INTERVAL_MINUTES:-30}
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-true}
+      ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
+      PUBLIC_TOOLS: ${PUBLIC_TOOLS:-}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+      CLAMAV_ENABLED: ${CLAMAV_ENABLED:-false}
+      # feature flags — pesadas desligadas por padrão nesta VM
+      FEATURE_OCR: ${FEATURE_OCR:-false}
+      FEATURE_COMPARE: ${FEATURE_COMPARE:-false}
+      FEATURE_REDACT: ${FEATURE_REDACT:-false}
+      FEATURE_CONVERT: ${FEATURE_CONVERT:-false}
+      FEATURE_BATCH: ${FEATURE_BATCH:-false}
+      # leves ligadas por padrão
+      FEATURE_SEARCH: ${FEATURE_SEARCH:-true}
+      FEATURE_CASES: ${FEATURE_CASES:-true}
+      FEATURE_JOBS: ${FEATURE_JOBS:-true}
+      FEATURE_NUMBERING: ${FEATURE_NUMBERING:-true}
+      FEATURE_OUTLINE: ${FEATURE_OUTLINE:-true}
+      FEATURE_INTEGRITY: ${FEATURE_INTEGRITY:-true}
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
     volumes:
       - storage_data:/data/storage
-    restart: unless-stopped
-
-  worker:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://lexscan:lexscan-dev@db:5432/lexscan}
-      STORAGE_ROOT: /data/storage
-      STORAGE_SECRET: ${STORAGE_SECRET}
-      TASK_BACKEND: ${TASK_BACKEND:-celery}
-      CELERY_BROKER_URL: redis://redis:6379/0
-      AUTH_RATE_LIMIT_PER_MIN: ${AUTH_RATE_LIMIT_PER_MIN:-10}
-    depends_on:
-      - db
-      - redis
-    volumes:
-      - storage_data:/data/storage
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request as u; r=u.urlopen('http://127.0.0.1:8000/api/meta/health', timeout=4); raise SystemExit(0 if r.status==200 else 1)",
+        ]
+      interval: 20s
+      timeout: 8s
+      retries: 5
+      start_period: 40s
+    mem_limit: 448m
     restart: unless-stopped
 
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-25m}
+        API_READ_TIMEOUT: ${API_READ_TIMEOUT:-120s}
+    depends_on:
+      api:
+        condition: service_healthy
+    # sem portas publicadas: só o caddy fala com o nginx
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    mem_limit: 64m
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
-      - api
+      frontend:
+        condition: service_started
+    mem_limit: 128m
+    restart: unless-stopped
+
+  # --- somente com `--profile worker` (modo TASK_BACKEND=celery) ---------
+  redis:
+    image: redis:7-alpine
+    profiles: ["worker"]
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 96m
+    restart: unless-stopped
+
+  worker:
+    profiles: ["worker"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        ENABLE_OCR: ${ENABLE_OCR:-false}
+    # command correto do Celery (antes subia uvicorn por engano)
+    command:
+      [
+        "celery",
+        "-A",
+        "app.workers.tasks.celery_app",
+        "worker",
+        "--loglevel=info",
+        "--concurrency=${WORKER_CONCURRENCY:-1}",
+      ]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lexscan}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lexscan}
+      STORAGE_ROOT: /data/storage
+      STORAGE_SECRET: ${STORAGE_SECRET:?defina STORAGE_SECRET no .env com 32+ caracteres}
+      TASK_BACKEND: celery
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      RETENTION_HOURS: ${RETENTION_HOURS:-24}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - storage_data:/data/storage
+    mem_limit: 384m
     restart: unless-stopped
 
 volumes:
   pg_data:
   redis_data:
   storage_data:
+  caddy_data:
+  caddy_config:

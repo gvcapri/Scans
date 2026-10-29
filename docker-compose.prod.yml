@@ -1,0 +1,37 @@
+# JudiFiles — override de produção (VM Oracle E2.1.Micro, 1 GB).
+#
+# Uso (mantém o Caddyfile e o compose base como estão):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# O que este arquivo garante, além do base:
+#   * ENVIRONMENT=prod em todos os processos Python (falha fechada);
+#   * rotação de logs para o disco da VM não encher;
+#   * worker permanece atrás do profile "worker" (não sobe por padrão).
+
+x-rotatelogs: &rotatelogs
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  api:
+    <<: *rotatelogs
+    environment:
+      ENVIRONMENT: prod
+
+  worker:
+    <<: *rotatelogs
+
+  db:
+    <<: *rotatelogs
+
+  redis:
+    <<: *rotatelogs
+
+  frontend:
+    <<: *rotatelogs
+
+  caddy:
+    <<: *rotatelogs

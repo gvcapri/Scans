@@ -1,0 +1,25 @@
+# Contexto de build enxuto (raiz é o contexto dos dois Dockerfiles).
+.git
+.gitignore
+.venv
+.pytest_cache
+**/__pycache__
+**/*.pyc
+
+# frontend
+**/node_modules
+frontend/dist
+frontend/tsconfig.tsbuildinfo
+
+# dados e materiais que não entram na imagem
+evidence
+samples
+docs
+tessdata
+storage
+**/*.db
+freebuff
+
+# segredos: o .env nunca vai para a imagem
+.env
+.env.*
