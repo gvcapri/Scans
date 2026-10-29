@@ -5,6 +5,7 @@ os routers. Separados por seção para facilitar a leitura e futuras alteraçõe
 """
 
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -41,7 +42,44 @@ async def lifespan(app: FastAPI):
     # Seção de rotas: registra todas as APIs do sistema (meta, auth, files,
     # jobs, presets, redact, search, compare, cases). Nenhum outro módulo
     # deve incluir um router manualmente.
+    stop_purge = _start_purge_loop()
     yield
+    if stop_purge is not None:
+        stop_purge.set()
+
+
+def _start_purge_loop() -> threading.Event | None:
+    """Expurgo LGPD (RETENTION_HOURS) em segundo plano — modo local.
+
+    Roda no startup e a cada PURGE_INTERVAL_MINUTES dentro do próprio
+    processo da API (TASK_BACKEND=local, o padrão nesta VM de 1 GB),
+    garantindo que o derrame automático aconteça mesmo sem worker Celery.
+    `PURGE_INTERVAL_MINUTES=0` desliga o agendador (o "Apagar agora" da
+    rota DELETE /files/{id} continua valendo).
+    """
+    from app.services.retention import purge_expired
+
+    try:
+        purge_expired()
+    except Exception:
+        log.error("Expurgo LGPD no startup falhou", exc_info=True)
+
+    interval = settings.purge_interval_minutes
+    if interval <= 0:
+        return None
+
+    stop = threading.Event()
+
+    def _loop() -> None:
+        while not stop.wait(interval * 60):
+            try:
+                purge_expired()
+            except Exception:  # nunca derruba o loop
+                log.error("Expurgo LGPD periódico falhou", exc_info=True)
+
+    threading.Thread(target=_loop, daemon=True, name="lgpd-purge").start()
+    log.info("Expurgo LGPD agendado a cada %d minuto(s)", interval)
+    return stop
 
 
 def create_app() -> FastAPI:
