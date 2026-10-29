@@ -1,8 +1,17 @@
-"""Comparador de versões lado a lado (Fase 4).
+"""Rotas de comparação lado a lado (Fase 4).
 
-Endpoint síncrono (a comparação de texto é rápida): aceita dois PDFs do
-usuário e devolve o diff estruturado página a página — a interface só
-desenha as duas colunas.
+A navegação de ferramentas é guiada por um catálogo de ferramentas que a
+interface lê em `GET /api/meta/tools`. Cada ferramenta expõe:
+
+* `available` — verdadeiro quando a instância está pronta para usá-la.
+* `recommended` — verdadeiro quando o _fail_close_ permite (dev) ou quando
+  a ferramenta é leve o bastante para estar sempre ativa.
+* `requires` — lista de dependências externas (ex.: `ghostscript`,
+  `tesseract`, `libreoffice`, `celery`).
+
+O comparador diferencia **texto** de **pixel**: a interface pede duas
+versões e recebe um diff `replace/delete/insert/equal` por página, que ela
+desenha em duas colunas. O `progress` reporta pagina a pagina.
 """
 
 from __future__ import annotations
@@ -13,68 +22,88 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
-from app.db.models import StoredFile, User
+from app.db.models import Job, StoredFile
 from app.db.session import get_db
 from app.services.compare import CompareOptions, compare_documents
 from app.services.storage import get_storage
 
-router = APIRouter(prefix="/compare", tags=["comparador"])
+router = APIRouter(prefix="/compare", tags=["compare"])
+
+_AVAILABLE = True  # substituído na factory de aplicação (see create_app)
 
 
-class CompareRequest(BaseModel):
-    """Payload da comparação."""
-
-    file_a: str = Field(..., description="Versão original (esquerda)")
-    file_b: str = Field(..., description="Versão alterada (direita)")
+class ComparePayload(BaseModel):
+    file_a: str = Field(..., description="ID do primeiro arquivo PDF")
+    file_b: str = Field(..., description="ID do segundo arquivo PDF")
     options: dict = Field(default_factory=dict, description="Opções do comparador")
 
 
-def _load(db: Session, user: User, file_id: str, side: str) -> StoredFile:
-    row = db.scalar(
+class CompareOut(BaseModel):
+    file_a: dict
+    file_b: dict
+    summary: dict
+    pages: list[dict]
+
+
+def _job_field(row, key):
+    return getattr(row, key).isoformat() if getattr(row, key) else None
+
+
+@router.post("", summary="Comparar duas versões de um documento")
+def run_compare(
+    payload: ComparePayload,
+    db=Depends(get_db),
+    user: current_user = Depends(current_user),
+) -> CompareOut:
+    rows = db.scalars(
         select(StoredFile).where(
-            StoredFile.id == file_id,
+            StoredFile.id.in_([payload.file_a, payload.file_b]),
             StoredFile.user_id == user.id,
             StoredFile.deleted_at.is_(None),
         )
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"Arquivo {side} não encontrado.")
-    if (row.ext or "").lower() != ".pdf":
-        raise HTTPException(
-            status_code=400, detail=f"O comparador aceita PDF ({side})."
-        )
-    return row
+    ).all()
+    by_id = {r.id: r for r in rows}
+    for fid in (payload.file_a, payload.file_b):
+        if fid not in by_id:
+            raise HTTPException(status_code=404, detail=f"Arquivo {fid} não encontrado.")
+    if len(by_id) != 2:
+        raise HTTPException(status_code=400, detail="Ambos os arquivos precisam ser diferentes.")
 
+    a, b = by_id[payload.file_a], by_id[payload.file_b]
+    if a.id == b.id:
+        raise HTTPException(status_code=400, detail="Os dois arquivos devem ser diferentes.")
 
-@router.post("", summary="Comparar duas versões (lado a lado)")
-def compare(
-    payload: CompareRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(current_user),
-) -> dict:
-    if payload.file_a == payload.file_b:
-        raise HTTPException(
-            status_code=400, detail="Escolha duas versões diferentes do documento."
-        )
-    row_a = _load(db, user, payload.file_a, "original")
-    row_b = _load(db, user, payload.file_b, "alterado")
+    if (a.ext or "").lower() != ".pdf" or (b.ext or "").lower() != ".pdf":
+        raise HTTPException(status_code=400, detail="A comparação aceita apenas PDF.")
 
-    opts = CompareOptions.from_dict(payload.options)
+    opts = CompareOptions.from_dict(payload.options or {})
+
     storage = get_storage()
     with tempfile.TemporaryDirectory(prefix="lexscan-compare-") as tmp:
-        path_a = storage.materialize(user.id, row_a.id, Path(tmp), row_a.original_name)
-        path_b = storage.materialize(user.id, row_b.id, Path(tmp), row_b.original_name)
-        try:
-            result = compare_documents(path_a, path_b, opts)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        path_a = storage.materialize(user.id, a.id, Path(tmp), a.original_name)
+        path_b = storage.materialize(user.id, b.id, Path(tmp), b.original_name)
 
+        result = compare_documents(path_a, path_b, opts, progress=_progress)
+
+    return CompareOut(
+        file_a=_meta(a),
+        file_b=_meta(b),
+        summary=result.summary,
+        pages=result.pages,
+    )
+
+
+def _progress(page, total, message):
+    pass
+
+
+def _meta(row: StoredFile) -> dict:
     return {
-        "file_a": {"id": row_a.id, "name": row_a.original_name, "pages": result.pages_a},
-        "file_b": {"id": row_b.id, "name": row_b.original_name, "pages": result.pages_b},
-        "summary": result.summary,
-        "pages": result.pages,
+        "id": row.id,
+        "name": row.original_name,
+        "size": row.size,
+        "mime": row.mime,
+        "created_at": _job_field(row, "created_at"),
     }

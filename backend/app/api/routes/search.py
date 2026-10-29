@@ -7,11 +7,12 @@ volta — o front só precisa imprimir o HTML do snippet.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
 from app.db.models import StoredFile, User
+from app.core.features import is_feature_enabled
 from app.db.search import search as run_search
 from app.db.session import engine, get_db
 
@@ -25,6 +26,11 @@ def search(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ) -> dict:
+    if not is_feature_enabled("search"):
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "feature_disabled", "message": "Recurso temporariamente indisponível"},
+        )
     hits, total = run_search(q, user.id, engine, limit=limit)
 
     # metadados do arquivo (nome, tamanho, data) — somente os do usuário

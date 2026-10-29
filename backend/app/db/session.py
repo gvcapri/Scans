@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -31,7 +30,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
-def get_db() -> Iterator[Session]:
+def get_db() -> Session:
     """Dependência FastAPI: uma sessão por requisição."""
     db = SessionLocal()
     try:
@@ -41,7 +40,7 @@ def get_db() -> Iterator[Session]:
 
 
 @contextmanager
-def session_scope() -> Iterator[Session]:
+def session_scope() -> Session:
     """Sessão autocommit para uso fora das rotas (worker, jobs, expurgo)."""
     db = SessionLocal()
     try:
