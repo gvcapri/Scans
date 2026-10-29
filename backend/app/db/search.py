@@ -91,8 +91,9 @@ def init_search(engine: Engine) -> bool:
             ),
         ]
 
-    # 1º passo: tenta o modo nativo do dialeto.
-    if _run_steps(engine, steps[:1]):
+    # 1º passo: tenta o modo nativo do dialeto (tabela + índice, cada um
+    # na própria transação — `steps` inteiro, senão o GIN nunca é criado).
+    if _run_steps(engine, steps):
         _mode = "postgres" if dialect == "postgresql" else "fts5"
         log.info("Índice full-text: %s", _mode)
         return True
