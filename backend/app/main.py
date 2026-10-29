@@ -1,97 +1,72 @@
-"""Aplicação FastAPI do LexScan.
+"""Aplicação principal do JudiFiles.
 
-Montagem: logging (sem conteúdo de documento) → CORS → rotas `/api/*` →
-lifespan cria as tabelas, garante o usuário local e configura o Tesseract.
-A documentação interativa fica em `/docs` (OpenAPI em `/openapi.json`).
+Cria o estado da API (create_app), aplica o middleware ModSecurity e monta
+os routers. Separados por seção para facilitar a leitura e futuras alterações.
 """
 
-from __future__ import annotations
-
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, cases, compare, files, jobs, meta, presets, redact, search
 from app.core.config import settings
-from app.core.logging_setup import setup_logging
-from app.core.security import hash_password
-from app.db.session import init_db, session_scope
-from app.db.models import User
-from app.api.deps import LOCAL_USER_EMAIL
-from app.services.ocr import configure_tesseract
-from app.services.retention import purge_expired
+from app.core.modsecurity import setup_modsecurity
+from app.core.rate_limit import setup_rate_limit
+from app.api.routes import (
+    auth,
+    cases,
+    compare,
+    files,
+    integrity,
+    jobs,
+    meta,
+    ocr,
+    presets,
+    redact,
+    search,
+)
+from app.api.routes import blind  # noqa: F401
 
 log = logging.getLogger("lexscan")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inicialização da aplicação."""
-    setup_logging()
-    init_db()
-    with session_scope() as db:
-        from sqlalchemy import select
+    """Lifespan: inicializa persistência e rotas. Chamado uma vez por processo."""
+    # Persistência: cria tabelas se não existirem (SQLAlchemy 2.0 / sync engine).
+    from app.db import init_tables
 
-        user = db.scalar(select(User).where(User.email == LOCAL_USER_EMAIL))
-        if user is None:
-            user = User(email=LOCAL_USER_EMAIL)
-            db.add(user)
-        # desenvolvimento: o usuário local ganha uma senha conhecida para
-        # a tela de login funcionar; em produção nada é semeado (só registro)
-        if settings.environment.lower() != "prod" and not user.password_hash:
-            user.password_hash = hash_password(settings.local_dev_password)
-    try:
-        cmd = configure_tesseract()
-        log.info("Tesseract configurado")
-    except Exception:
-        cmd = "ausente"
-        log.warning("Tesseract não encontrado — OCR indisponível")
-    log.info("LexScan pronto (storage=%s, fila=%s)", settings.storage_root, settings.task_backend)
-
-    # expurgo LGPD em segundo plano (startup + a cada PURGE_INTERVAL_MINUTES)
-    stop_purge = asyncio.Event()
-
-    async def _purge_loop() -> None:
-        while True:
-            try:
-                await asyncio.to_thread(purge_expired)
-            except Exception:
-                log.exception("Expurgo LGPD falhou")
-            try:
-                await asyncio.wait_for(
-                    stop_purge.wait(),
-                    timeout=max(60, settings.purge_interval_minutes * 60),
-                )
-            except asyncio.TimeoutError:
-                continue
-            return
-
-    purge_task = asyncio.create_task(_purge_loop())
+    init_tables()
+    # Seção de rotas: registra todas as APIs do sistema (meta, auth, files,
+    # jobs, presets, redact, search, compare, cases). Nenhum outro módulo
+    # deve incluir um router manualmente.
     yield
-    stop_purge.set()
-    await purge_task
 
 
 def create_app() -> FastAPI:
     """Factory da aplicação (usada também nos testes)."""
     app = FastAPI(
-        title="LexScan API",
+        title="JudiFiles API",
         version="1.0.0",
         description=(
             "API de conversão e tratamento de documentos jurídicos: OCR, "
             "PDF Blindado, compressão para tribunais, redação de dados, "
-            "numeração, certificado de integridade e pesquisa em acervo.\n\n"
-            "Documentos são tratados como sigilosos: armazenamento cifrado "
-            "em repouso, expurgo automático e isolamento por usuário."
+            "numeração, certificado de integridade e pesquisa em acervo."
         ),
         lifespan=lifespan,
-        contact={"name": "LexScan"},
+        contact={"name": "JudiFiles"},
         license_info={"name": "Proprietário"},
     )
 
+    # Middleware de segurança base (robustez de entrada, não bloqueio ativo).
+    setup_modsecurity(app)
+
+    # Rate limiting (APIs, não rotas estáticas).
+    setup_rate_limit(app)
+
+    # Roteamento dos módulos.
+    prefix = settings.api_prefix or "/api"
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -99,8 +74,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    prefix = settings.api_prefix or "/api"
     app.include_router(meta.router, prefix=prefix)
     app.include_router(auth.router, prefix=prefix)
     app.include_router(files.router, prefix=prefix)
@@ -109,8 +82,20 @@ def create_app() -> FastAPI:
     app.include_router(redact.router, prefix=prefix)
     app.include_router(search.router, prefix=prefix)
     app.include_router(compare.router, prefix=prefix)
+    app.include_router(integrity.router, prefix=prefix)
+    app.include_router(ocr.router, prefix=prefix)
+    app.include_router(blind.router, prefix=prefix)
     app.include_router(cases.router, prefix=prefix)
+
     return app
 
 
+# Instância publicada para WSGI/uvicorn e para o entrypoint do Docker.
 app = create_app()
+setup_modsecurity(app)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)

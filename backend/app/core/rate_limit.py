@@ -12,7 +12,10 @@ import threading
 import time
 from collections import defaultdict, deque
 
-from fastapi import HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+
+from app.core.config import settings
 
 _WINDOW = 60.0  # janela de 1 minuto
 _lock = threading.Lock()
@@ -56,3 +59,23 @@ def reset() -> None:
     """Zera contadores (usado pelos testes)."""
     with _lock:
         _hits.clear()
+
+
+def setup_rate_limit(app: FastAPI) -> None:
+    """Roda o rate limiter em todo o app (apenas rotas /api/*)."""
+    @app.middleware("http")
+    async def _rate_limit(request: Request, call_next):
+        if request.url.path.startswith("/api/"):
+            key = client_ip(request)
+            # contadores compartilhados com o limiter de autenticação:
+            # o mesmo limite por minuto serve para todas as rotas de API.
+            if not allow(key, settings.rate_limit_per_min):
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "code": "too_many_requests",
+                        "message": "Muitas requisições. Aguarde um minuto e tente novamente.",
+                    },
+                )
+        return await call_next(request)
+

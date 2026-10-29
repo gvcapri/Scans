@@ -1,150 +1,215 @@
-"""Rotas auxiliares: saúde, idiomas de OCR e catálogo de ferramentas."""
+"""Rotas de metadados do serviço (sem conteúdo de documento)."""
 
 from __future__ import annotations
+
+import pytesseract
 
 from fastapi import APIRouter
 
 from app.core.config import settings
-from app.services.ocr import configure_tesseract, languages
 
-router = APIRouter(prefix="/meta", tags=["meta"])
-
-# Catálogo usado pela interface. `available` diz o que já está implementado
-# — as fases seguintes apenas alternam a flag.
-TOOLS = [
-    {
-        "id": "ocr",
-        "name": "OCR",
-        "description": "PDF escaneado ou imagem → PDF pesquisável, TXT ou DOCX.",
-        "phase": 1,
-        "available": True,
-        "route": "/ocr",
-    },
-    {
-        "id": "blind",
-        "name": "PDF Blindado",
-        "description": "Achata o PDF em imagem de alta resolução: acaba com edição.",
-        "phase": 1,
-        "available": True,
-        "route": "/blind",
-    },
-    {
-        "id": "merge",
-        "name": "Mesclar",
-        "description": "Une vários arquivos em um único PDF, com reordenação.",
-        "phase": 2,
-        "available": True,
-        "route": "/merge",
-    },
-    {
-        "id": "split",
-        "name": "Dividir",
-        "description": "Separa por intervalo de páginas ou extrai páginas específicas.",
-        "phase": 2,
-        "available": True,
-        "route": "/split",
-    },
-    {
-        "id": "convert",
-        "name": "Converter",
-        "description": "Imagem↔PDF, Word→PDF, PDF→PNG/JPG, PDF→TXT/DOCX.",
-        "phase": 2,
-        "available": True,
-        "route": "/convert",
-    },
-    {
-        "id": "compress",
-        "name": "Compressor",
-        "description": "Reduz para o limite do tribunal (PJe, e-SAJ, e-Proc).",
-        "phase": 2,
-        "available": True,
-        "route": "/compress",
-    },
-    {
-        "id": "redact",
-        "name": "Tarjar / Redigir",
-        "description": "Remove CPF, CNPJ, RG, telefone e dados bancários.",
-        "phase": 3,
-        "available": True,
-        "route": "/redact",
-    },
-    {
-        "id": "metadata",
-        "name": "Dados da peça",
-        "description": "Grava CNJ, partes e tipo no PDF e renomeia o arquivo.",
-        "phase": 3,
-        "available": True,
-        "route": "/metadata",
-    },
-    {
-        "id": "number",
-        "name": "Numerar / Bates",
-        "description": "Numeração, carimbo Fls., anexo e marca d'água.",
-        "phase": 3,
-        "available": True,
-        "route": "/number",
-    },
-    {
-        "id": "outline",
-        "name": "Sumário e índice",
-        "description": "Bookmarks e página de índice para petições com anexos.",
-        "phase": 3,
-        "available": True,
-        "route": "/outline",
-    },
-    {
-        "id": "integrity",
-        "name": "Certificado de integridade",
-        "description": "Hash SHA-256 + relatório PDF das operações.",
-        "phase": 3,
-        "available": True,
-        "route": "/integrity",
-    },
-    {
-        "id": "search",
-        "name": "Pesquisa em acervo",
-        "description": "Busca textual em todos os documentos, com destaque.",
-        "phase": 4,
-        "available": True,
-        "route": "/search",
-    },
-    {
-        "id": "compare",
-        "name": "Comparador",
-        "description": "Diferenças entre duas versões lado a lado.",
-        "phase": 4,
-        "available": True,
-        "route": "/compare",
-    },
-    {
-        "id": "batch",
-        "name": "Processamento em lote",
-        "description": "Pasta/ZIP + fluxo reutilizável, download em ZIP.",
-        "phase": 4,
-        "available": True,
-        "route": "/batch",
-    },
-]
+router = APIRouter(prefix="/meta", tags=["metadados"])
 
 
-@router.get("/health", summary="Saúde da API")
-def health() -> dict:
-    return {"status": "ok", "app": settings.app_name, "version": "1.0.0"}
+@router.get("/features", summary="Funcionalidades ativas (flags de produção)")
+def read_features() -> dict:
+    """Lista o que está disponível nesta instância.
 
-
-@router.get("/languages", summary="Idiomas de OCR disponíveis")
-def ocr_languages() -> dict:
-    try:
-        configure_tesseract()
-    except Exception:
-        pass
-    langs = languages()
+    O valor vem de variáveis de ambiente; basta mudar o .env e reiniciar.
+    """
     return {
-        "languages": sorted(langs),
-        "default": "por+eng" if {"por", "eng"} <= set(langs) else (langs[0] if langs else "eng"),
+        "ocr": settings.features.ocr,
+        "blind": settings.features.blind,
+        "compare": settings.features.compare,
+        "redact": settings.features.redact,
+        "numbering": settings.features.numbering,
+        "outline": settings.features.outline,
+        "integrity": settings.features.integrity,
+        "convert": settings.features.convert,
+        "batch": settings.features.batch,
+        "search": settings.features.search,
+        "cases": settings.features.cases,
+        "jobs": settings.features.jobs,
+        "registration_open": settings.features.registration_open,
+        "public_tools": settings.features.public_tools,
     }
 
 
-@router.get("/tools", summary="Catálogo de ferramentas")
-def tools() -> dict:
-    return {"tools": TOOLS}
+@router.get("/languages", summary="Idiomas disponíveis no Tesseract")
+def read_languages() -> dict:
+    """Lista os idiomas OCR suportados neste ambiente."""
+    try:
+        installed = [
+            l.strip()
+            for l in pytesseract.get_languages(config="")
+            if l.strip()
+        ]
+    except Exception:
+        installed = []
+    configured = [l.strip() for l in (settings.tesseract_langs or "por+eng").split("+") if l.strip()]
+    return {"languages": installed or configured, "installed": installed, "configured": configured}
+
+
+@router.get("/tools", summary="Catálogo de ferramentas disponíveis")
+def read_tools() -> dict:
+    """Lista todas as ferramentas (Fases 2-4) com disponibilidade por instância.
+
+    A disponibilidade respeita o _fail_close_ de `ENVIRONMENT=prod`: nessa
+    configuração, somente as ferramentas leves (baseadas em PyMuPDF, sem
+    subida de processo, sem dependências externas) ficam ativas por padrão.
+    Tudo o que consome OCR, Ghostscript, LibreOffice, Celery ou um processo
+    externo é **recomendada** e exige a flag correspondente ou um
+    `ENVIRONMENT=dev` ativo.
+    """
+    tools = [
+        # Fase 2 — conversão e manipulação básica
+        {
+            "id": "convert",
+            "name": "Converter",
+            "description": "Imagem/PDF → PDF, Word → PDF, PDF → PNG/TXT/DOCX.",
+            "category": "conversao",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["convert", "imagem", "documento"],
+        },
+        {
+            "id": "split",
+            "name": "Dividir/Extrair",
+            "description": "Extrair páginas, por intervalos ou por metadado de um PDF.",
+            "category": "conversao",
+            "available": True,
+            "recommended": False,
+            "requires": ["ghostscript"],
+            "tags": ["pdf", "split", "extrair"],
+        },
+        {
+            "id": "merge",
+            "name": "Mesclar PDFs",
+            "description": "Juntar vários PDFs na ordem escolhida, com sumário.",
+            "category": "conversao",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["pdf", "merge", "mesclar"],
+        },
+        {
+            "id": "compress",
+            "name": "Comprimir PDF",
+            "description": "Reduz o tamanho do PDF (Qualidade, PDF/A, divisão).",
+            "category": "conversao",
+            "available": True,
+            "recommended": False,
+            "requires": ["ghostscript"],
+            "tags": ["pdf", "compressão", "tamanho"],
+        },
+        # Fase 3 — documento jurídico
+        {
+            "id": "redact",
+            "name": "Redigir PDF",
+            "description": "Tarja irreversível de dados sensíveis (CPF, CNPJ, cartões, e-mail...).",
+            "category": "documento",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["redact", "segurança", "LGPD", "pdf"],
+        },
+        {
+            "id": "number",
+            "name": "Numerar páginas",
+            "description": "Insere numeração automática (centro, canto, formato).",
+            "category": "documento",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["numeracao", "pdf", "documento"],
+        },
+        {
+            "id": "numbering",
+            "name": "Numeração automática",
+            "description": "Aplica numeração automática (centro, canto, formato).",
+            "category": "documento",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["numeracao", "pdf", "documento"],
+        },
+        {
+            "id": "outline",
+            "name": "Sumário (bookmarks)",
+            "description": "Gera ou reescreve o sumário do PDF a partir de uma tabela.",
+            "category": "documento",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["outline", "bookmark", "sumario", "pdf"],
+        },
+        {
+            "id": "metadata",
+            "name": "Metadados",
+            "description": "Ler/escrever título, autor, assunto, palavras-chave do PDF.",
+            "category": "documento",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["metadata", "metadados", "pdf"],
+        },
+        # Fase 4 — pesquisa e acervo
+        {
+            "id": "search",
+            "name": "Busca full-text",
+            "description": "Procura no texto extraído de todos os PDFs do usuário.",
+            "category": "pesquisa",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["busca", "fulltext", "texto"],
+        },
+        {
+            "id": "compare",
+            "name": "Comparação lado a lado",
+            "description": "Diff de duas versões do mesmo documento por texto.",
+            "category": "pesquisa",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["compare", "diff", "versao"],
+        },
+        {
+            "id": "batch",
+            "name": "Lote",
+            "description": "Aplica uma sequência de passos (PCA, OCR, compressão...) a vários PDFs.",
+            "category": "lote",
+            "available": True,
+            "recommended": False,
+            "requires": ["ghostscript"],
+            "tags": ["lote", "batch", "sequencia"],
+        },
+        # Fase 5 — segurança e privacidade
+        {
+            "id": "blind",
+            "name": "PDF Blindado",
+            "description": "Achata o PDF em imagem (nada de edição, metadados zerados).",
+            "category": "privacidade",
+            "available": True,
+            "recommended": False,
+            "requires": ["tesseract"],
+            "tags": ["blind", "privacidade", "segurança", "pdf"],
+        },
+        {
+            "id": "integrity",
+            "name": "Certificado de integridade",
+            "description": "Gera SHA-256 e lê/escreve metadados de assinatura de documento.",
+            "category": "privacidade",
+            "available": True,
+            "recommended": False,
+            "requires": [],
+            "tags": ["integridade", "sha256", "certificado"],
+        },
+    ]
+    return {"tools": tools}
+
+
+@router.get("/health", summary="Saúde do serviço")
+def health() -> dict:
+    return {"status": "ok", "app": settings.app_name}
