@@ -130,7 +130,6 @@ def create_app() -> FastAPI:
 
 # Instância publicada para WSGI/uvicorn e para o entrypoint do Docker.
 app = create_app()
-setup_modsecurity(app)
 
 
 if __name__ == "__main__":

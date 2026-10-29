@@ -8,7 +8,7 @@ Recebe vários arquivos **ou um ZIP** e aplica uma sequência de passos
 Regras de comportamento:
 
 * o ZIP de entrada é validado contra travessia de caminho e "bomba"
-  (`validate_zip_bytes`) e só arquivos com extensão compatível entram;
+  (`validate_zip_file`) e só arquivos com extensão compatível entram;
 * passo incompatível com um arquivo (ex.: "Blindar" numa imagem) é
   **ignorado com aviso**, não derruba o lote inteiro;
 * o fluxo pode ser salvo como perfil (`tool="batch"`) e reutilizado.
@@ -20,13 +20,13 @@ quer num lote.
 
 from __future__ import annotations
 
-import io
 import logging
+import shutil
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.services.validation import sanitize_filename, validate_zip_bytes
+from app.services.validation import sanitize_filename, validate_zip_file
 
 log = logging.getLogger("lexscan.batch")
 
@@ -80,17 +80,19 @@ class BatchResult:
 
 
 def _extract_zip(path: Path, dest: Path) -> list[Path]:
-    """Valida e extrai um ZIP de entrada (anti travessia/bomba)."""
-    data = path.read_bytes()
+    """Valida e extrai um ZIP de entrada (anti travessia/bomba).
+
+    Tudo lido direto do arquivo: o ZIP nunca é carregado inteiro na RAM.
+    """
     try:
-        validate_zip_bytes(data)
+        validate_zip_file(path)
     except Exception as exc:  # HTTPException do validador vira erro amigável
         detail = getattr(exc, "detail", None) or str(exc)
         raise ValueError(f"ZIP inválido: {detail}") from exc
 
     dest.mkdir(parents=True, exist_ok=True)
     extracted: list[Path] = []
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+    with zipfile.ZipFile(path) as zf:
         for info in zf.infolist():
             if info.is_dir():
                 continue
@@ -98,7 +100,8 @@ def _extract_zip(path: Path, dest: Path) -> list[Path]:
             if ext not in INNER_EXTS:
                 continue
             target = dest / sanitize_filename(Path(info.filename).name)
-            target.write_bytes(zf.read(info))
+            with zf.open(info) as entry, target.open("wb") as out:
+                shutil.copyfileobj(entry, out)  # extração em streaming
             extracted.append(target)
     return sorted(extracted)
 

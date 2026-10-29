@@ -7,12 +7,25 @@ fila de tarefas não muda nada nas rotas.
 from __future__ import annotations
 
 import logging
+import threading
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 
 from app.core.config import settings
 
 log = logging.getLogger("lexscan.jobs")
+
+# Semáforo de jobs pesados: cada execução carrega PDF/OCR na memória, então
+# numa VM de 1 GB nunca passamos de `max_concurrent_jobs` por processo.
+_HEAVY = threading.BoundedSemaphore(max(1, settings.max_concurrent_jobs))
+
+
+def run_job_guarded(job_id: str) -> None:
+    """Executa um job dentro do semáforo de concorrência (nunca derruba o processo)."""
+    with _HEAVY:
+        from app.workers.execution import run_job
+
+        run_job(job_id)
 
 
 class JobRunner(ABC):
@@ -32,11 +45,9 @@ class LocalRunner(JobRunner):
         )
 
     def submit(self, job_id: str) -> None:
-        from app.workers.execution import run_job
-
         def _safe() -> None:
             try:
-                run_job(job_id)
+                run_job_guarded(job_id)
             except Exception:  # nunca derruba a thread
                 log.exception("Falha ao executar o job")
 

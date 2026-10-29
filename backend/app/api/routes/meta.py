@@ -7,6 +7,7 @@ import pytesseract
 from fastapi import APIRouter
 
 from app.core.config import settings
+from app.core.features import is_feature_enabled
 
 router = APIRouter(prefix="/meta", tags=["metadados"])
 
@@ -207,6 +208,28 @@ def read_tools() -> dict:
             "tags": ["integridade", "sha256", "certificado"],
         },
     ]
+    # Disponibilidade real por flag — a mesma que o modsecurity usa para
+    # devolver 503 (fail-closed em prod). Sem flag correspondente: sempre
+    # disponível (ferramenta leve, baseada em PyMuPDF).
+    tool_flags = {
+        "convert": "convert",
+        "redact": "redact",
+        "search": "search",
+        "compare": "compare",
+        "batch": "batch",
+        "blind": "blind",
+        "integrity": "integrity",
+    }
+    tool_phases = {
+        "convert": 2, "split": 2, "merge": 2, "compress": 2,
+        "redact": 3, "number": 3, "numbering": 3, "outline": 3, "metadata": 3,
+        "search": 4, "compare": 4, "batch": 4,
+        "blind": 5, "integrity": 5,
+    }
+    for tool in tools:
+        flag = tool_flags.get(tool["id"])
+        tool["available"] = flag is None or is_feature_enabled(flag)
+        tool["phase"] = tool_phases.get(tool["id"], 1)
     return {"tools": tools}
 
 

@@ -4,6 +4,10 @@
 #                     -> location /api/ -> api:8000
 # O HSTS mora aqui; os demais cabeçalhos de segurança são emitidos pelo
 # nginx do frontend.
+#
+# `http://localhost` existe só para o smoke test local (scripts/smoke_test.sh)
+# — em produção ninguém chega aqui: o bloco só responde a origem privada
+# (rede Docker/loopback) e sempre em HTTP puro, sem HSTS.
 
 judifiles.com.br {
 	encode zstd gzip
@@ -14,4 +18,12 @@ judifiles.com.br {
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	}
+}
+
+http://localhost {
+	@externo not remote_ip 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 ::1
+	respond @externo 404
+
+	encode zstd gzip
+	reverse_proxy frontend:80
 }

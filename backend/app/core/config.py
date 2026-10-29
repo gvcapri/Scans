@@ -120,13 +120,19 @@ class Settings(BaseSettings):
     )
 
     # --- Aplicação ---
+    # Falha fechada: se ENVIRONMENT não estiver definido, assume prod
+    # (dev define ENVIRONMENT=dev explicitamente — ver conftest/README).
     app_name: str = "JudiFiles"
-    environment: str = "dev"
+    environment: str = "prod"
     api_prefix: str = "/api"
     cors_origins: str = "http://localhost:5173,http://localhost:4173"
 
     # --- Banco ---
     database_url: str = "sqlite:///./lexscan.db"
+    # Pool por processo — numa VM de 1 GB o Postgres não aguenta muitas
+    # conexões simultâneas (API + worker disputam a mesma RAM).
+    db_pool_size: int = 3
+    db_max_overflow: int = 2
 
     # --- Armazenamento ---
     storage_root: Path = Path("./storage")
@@ -137,6 +143,9 @@ class Settings(BaseSettings):
     task_backend: str = "local"
     celery_broker_url: str = "redis://localhost:6379/0"
     worker_concurrency: int = 2
+    # Jobs pesados simultâneos por processo (semáforo): cada job carrega
+    # PDF/OCR na memória, então em 1 GB o padrão é 1 por vez.
+    max_concurrent_jobs: int = 1
 
     # --- LGPD ---
     retention_hours: int = 24
@@ -256,11 +265,18 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    # falha fechada: STORAGE_SECRET obrigatório e com tamanho mínimo em prod
+    # falha fechada: em prod, STORAGE_SECRET obrigatório, 32+ chars e
+    # nunca o valor de exemplo (mesmo que tenha o comprimento mínimo)
     if settings.environment.lower() == "prod":
-        if not settings.storage_secret or len(settings.storage_secret) < 32:
+        _example = {
+            "",
+            "dev-only-secret-key-troque-em-producao",
+            "troque-este-segredo",
+        }
+        if settings.storage_secret in _example or len(settings.storage_secret) < 32:
             raise RuntimeError(
-                "ENVIRONMENT=prod exige STORAGE_SECRET de 32+ caracteres. "
+                "ENVIRONMENT=prod exige STORAGE_SECRET real de 32+ caracteres "
+                "(não pode ser o valor de exemplo). "
                 "Gerar com: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
             )
     return settings

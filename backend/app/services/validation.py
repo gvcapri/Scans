@@ -136,13 +136,21 @@ def validate_upload(
 
 
 def validate_zip_bytes(data: bytes, max_entries: int = 200, max_ratio: int = 200) -> int:
+    """Blindagem contra ZIP malicioso (recebe os bytes em memória)."""
+    import io
+
+    return validate_zip_file(io.BytesIO(data), max_entries=max_entries, max_ratio=max_ratio)
+
+
+def validate_zip_file(source, max_entries: int = 200, max_ratio: int = 200) -> int:
     """Blindagem contra ZIP malicioso (travessia de caminho e bomba descompactada).
+
+    `source` é um caminho ou arquivo aberto — lê só o diretório central,
+    sem carregar o ZIP inteiro na memória (VM de 1 GB).
 
     Retorna o número de arquivos seguros para processar.
     """
-    import io
-
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+    with zipfile.ZipFile(source) as zf:
         infos = zf.infolist()
         if len(infos) > max_entries:
             raise HTTPException(status_code=400, detail="ZIP com arquivos demais.")

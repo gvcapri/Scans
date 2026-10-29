@@ -13,6 +13,7 @@ from pathlib import Path
 # --- ambiente de teste (precisa vir antes dos imports da app) ---------------
 _TEST_ROOT = Path(tempfile.mkdtemp(prefix="lexscan-tests-"))
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{_TEST_ROOT / 'test.db'}")
+os.environ.setdefault("ENVIRONMENT", "dev")  # prod é o padrão do código (falha fechada)
 os.environ.setdefault("STORAGE_ROOT", str(_TEST_ROOT / "storage"))
 os.environ.setdefault("STORAGE_SECRET", "segredo-de-teste-somente-0123456789")
 os.environ.setdefault("TASK_BACKEND", "local")

@@ -139,7 +139,7 @@ def _draw_index(page: pymupdf.Page, title: str, entries: list[dict]) -> None:
 
     tw.append(
         pymupdf.Point(margin_x, height - 30),
-        "LexScan - sumário gerado automaticamente",
+        "JudiFiles - sumário gerado automaticamente",
         font=helv,
         fontsize=8,
     )

@@ -34,9 +34,10 @@ export type Tool = {
   id: string;
   name: string;
   description: string;
-  phase: number;
-  available: boolean;
-  route: string;
+  available: boolean; // false = flag desligada ("Em breve")
+  phase?: number;
+  category?: string;
+  requires?: string[];
 };
 
 export type OcrLanguages = { languages: string[]; default: string };

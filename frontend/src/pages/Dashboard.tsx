@@ -59,13 +59,18 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: Route) => vo
                   {tool.name}
                 </span>
                 <span
+                  title={
+                    disabled && tool.phase
+                      ? `Recurso previsto para a Fase ${tool.phase}`
+                      : undefined
+                  }
                   className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                     disabled
                       ? "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
                       : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                   }`}
                 >
-                  {disabled ? `Fase ${tool.phase}` : "Disponível"}
+                  {disabled ? "Em breve" : "Disponível"}
                 </span>
               </div>
               <p

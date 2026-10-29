@@ -2,12 +2,13 @@
 
 Proteção contra força bruta no login/registro, por IP (registro) e por
 IP + e-mail (login). Em memória — suficiente para a instância única do
-LexScan; em escala horizontal a troca é pontual (Redis) sem mudar quem
+JudiFiles; em escala horizontal a troca é pontual (Redis) sem mudar quem
 chama `require_within`.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import threading
 import time
 from collections import defaultdict, deque
@@ -22,12 +23,40 @@ _lock = threading.Lock()
 _hits: dict[str, deque[float]] = defaultdict(deque)
 
 
+def _is_trusted_proxy(host: str | None) -> bool:
+    """True para proxies conhecidos (rede interna/loopback: caddy, nginx).
+
+    Só esses podem injetar X-Forwarded-For; um cliente direto na internet
+    manda o header para o lixo (senão burlava o limite por IP).
+    """
+    if not host:
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private
+
+
 def client_ip(request: Request) -> str:
-    """IP do cliente (respeita X-Forwarded-For quando há proxy)."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "desconhecido"
+    """IP do cliente real, desempilhando X-Forwarded-For com segurança.
+
+    O header termina em `cliente, proxy1, proxy2...` (cada proxy acrescenta
+    o par anterior). Percorre da direita para a esquerda ignorando proxies
+    conhecidos; o primeiro endereço que NÃO é proxy é o cliente. Se o par
+    imediato não for proxy conhecido, o header é inteiramente ignorado.
+    """
+    peer = request.client.host if request.client else "desconhecido"
+    if not _is_trusted_proxy(peer):
+        return peer
+    forwarded = request.headers.get("x-forwarded-for", "")
+    hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+    for hop in reversed(hops):
+        if not _is_trusted_proxy(hop):
+            return hop
+    if hops:
+        return hops[0]
+    return peer
 
 
 def allow(key: str, limit_per_min: int) -> bool:

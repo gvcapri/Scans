@@ -7,6 +7,7 @@ import Cases from "./pages/Cases";
 import Compare from "./pages/Compare";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
+import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Search from "./pages/Search";
 import Tool from "./pages/Tool";
@@ -28,6 +29,10 @@ export default function App() {
   const [route, setRoute] = useState<Route>("dashboard");
   const [session, setSession] = useState<Session>({ status: "loading", user: null });
   const [securityOpen, setSecurityOpen] = useState(false);
+  // Visitante sem sessão vê a landing pública; `pendingRoute` guarda a
+  // rota que ele tentou abrir (cadeado) para voltar a ela após o login.
+  const [view, setView] = useState<"landing" | "login">("landing");
+  const [pendingRoute, setPendingRoute] = useState<Route | null>(null);
   const back = () => setRoute("dashboard");
 
   useEffect(() => {
@@ -47,6 +52,8 @@ export default function App() {
     }
     setSecurityOpen(false);
     setRoute("dashboard");
+    setPendingRoute(null);
+    setView("landing");
     setSession({ status: "anon", user: null });
   };
 
@@ -59,9 +66,29 @@ export default function App() {
   }
 
   if (session.status === "anon") {
+    // Sem sessão: landing pública; a partir dela, o cadeado leva ao login
+    // e o login devolve o usuário à rota que ele tentou abrir (return-to).
+    if (view === "login") {
+      return (
+        <Login
+          onBack={() => setView("landing")}
+          onAuthenticated={(user) => {
+            setSession({ status: "authed", user });
+            if (pendingRoute) {
+              setRoute(pendingRoute);
+              setPendingRoute(null);
+            }
+            setView("landing");
+          }}
+        />
+      );
+    }
     return (
-      <Login
-        onAuthenticated={(user) => setSession({ status: "authed", user })}
+      <Landing
+        onEnter={(target) => {
+          setPendingRoute(target);
+          setView("login");
+        }}
       />
     );
   }

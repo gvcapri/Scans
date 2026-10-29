@@ -48,7 +48,9 @@ def extract_text(path: Path) -> str:
                         break
                 return "".join(parts)[:MAX_CHARS]
         if ext in {".txt", ".md", ".csv", ".log"}:
-            raw = path.read_bytes()[:MAX_CHARS]
+            # lê só o necessário (teto de ~MAX_CHARS caracteres UTF-8)
+            with path.open("rb") as fh:
+                raw = fh.read(MAX_CHARS * 4)
             for encoding in ("utf-8", "latin-1"):
                 try:
                     return raw.decode(encoding)

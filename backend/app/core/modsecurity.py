@@ -26,6 +26,7 @@ from app.core.features import is_feature_enabled
 PUBLIC_ROUTES = {
     "/api/meta/health",
     "/api/meta/features",
+    "/api/meta/tools",
     "/api/auth/register",
     "/api/auth/login",
     "/api/auth/login/2fa",

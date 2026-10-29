@@ -20,11 +20,23 @@ _connect_args = (
     else {}
 )
 
+# Pool enxuto para VM de 1 GB (3 + 2 = máx. 5 conexões por processo).
+# `:memory:` usa StaticPool, que não aceita esses parâmetros.
+_pool_kwargs = (
+    {}
+    if ":memory:" in settings.database_url
+    else {
+        "pool_size": settings.db_pool_size,
+        "max_overflow": settings.db_max_overflow,
+    }
+)
+
 engine = create_engine(
     settings.database_url,
     connect_args=_connect_args,
     pool_pre_ping=True,
     future=True,
+    **_pool_kwargs,
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

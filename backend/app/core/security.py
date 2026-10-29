@@ -54,7 +54,10 @@ def hash_password(password: str) -> str:
 def verify_password(hashed: str | None, password: str) -> bool:
     """Verifica com segurança; hash ausente/inválido só devolve False."""
     if not hashed:
-        _hasher.verify(_DUMMY_HASH, password)  # mantém o tempo de resposta
+        try:
+            _hasher.verify(_DUMMY_HASH, password)  # mantém o tempo de resposta
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            pass  # esperado: o hash de referência nunca confere
         return False
     try:
         return _hasher.verify(hashed, password)
@@ -106,7 +109,7 @@ def new_totp_secret() -> str:
 
 
 def totp_uri(secret: str, email: str) -> str:
-    return pyotp.TOTP(secret).provisioning_uri(name=email, issuer_name="LexScan")
+    return pyotp.TOTP(secret).provisioning_uri(name=email, issuer_name="JudiFiles")
 
 
 def verify_totp(secret: str, code: str) -> bool:

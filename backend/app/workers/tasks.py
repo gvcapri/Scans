@@ -27,9 +27,9 @@ try:  # import opcional: localmente não instalamos celery/redis
 
     @celery_app.task(name="lexscan.run_job", bind=True)
     def run_job_task(self, job_id: str) -> str:
-        from app.workers.execution import run_job
+        from app.core.jobs import run_job_guarded
 
-        run_job(job_id)
+        run_job_guarded(job_id)
         return job_id
 
 except ImportError:  # modo local: não há Celery instalado

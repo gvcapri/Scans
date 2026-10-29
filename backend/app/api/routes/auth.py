@@ -72,7 +72,9 @@ def _set_cookie(response: Response, token: str) -> None:
         max_age=60 * 60 * 12,
         httponly=True,
         samesite="lax",
-        secure=False,  # True quando atrás de HTTPS em produção
+        # atrás do Caddy o tráfego é sempre HTTPS em prod; em dev (http)
+        # o cookie precisa ser aceito sem TLS
+        secure=settings.environment.lower() == "prod",
         path="/",
     )
 

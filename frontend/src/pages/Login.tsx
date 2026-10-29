@@ -4,13 +4,15 @@ import { auth, ApiError, type AuthUser } from "../api/client";
 type Props = {
   onAuthenticated: (user: AuthUser) => void;
   initialError?: string | null;
+  /** Volta à apresentação pública (quando o login foi pedido por um cadeado). */
+  onBack?: () => void;
 };
 
 /**
  * Tela de acesso (Fase 5): entrar, criar conta e concluir com 2FA TOTP.
  * O token volta em cookie httpOnly — nada sensível fica no JavaScript.
  */
-export default function Login({ onAuthenticated, initialError }: Props) {
+export default function Login({ onAuthenticated, initialError, onBack }: Props) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -55,6 +57,15 @@ export default function Login({ onAuthenticated, initialError }: Props) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-ink-50 px-4 py-10 dark:bg-slate-950">
       <div className="w-full max-w-md">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-ink-800 dark:text-slate-400 dark:hover:text-slate-100"
+          >
+            ← Voltar
+          </button>
+        )}
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <svg viewBox="0 0 24 24" aria-hidden="true" className="h-12 w-12">
             <path
