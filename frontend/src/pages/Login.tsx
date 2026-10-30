@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Scale } from "lucide-react";
 import { auth, ApiError, type AuthUser } from "../api/client";
 
 type Props = {
@@ -57,12 +58,12 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
   };
 
   const input =
-    "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-ink-900 " +
-    "placeholder:text-slate-400 focus:border-gold-400 focus:outline-none focus:ring-2 " +
-    "focus:ring-gold-400/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
+    "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-navy-900 " +
+    "placeholder:text-slate-400 focus:border-blue-700 focus:outline-none focus:ring-2 " +
+    "focus:ring-blue-700/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-ink-50 px-4 py-10 dark:bg-slate-950">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10 dark:bg-slate-950">
       <div className="w-full max-w-md">
         {onBack && (
           <button
@@ -74,31 +75,18 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
           </button>
         )}
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-12 w-12">
-            <path
-              d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5l8-3z"
-              fill="#16324f"
-              stroke="#c9a227"
-              strokeWidth="1.4"
-            />
-            <path
-              d="M8.5 12l2.3 2.4 4.7-5"
-              fill="none"
-              stroke="#c9a227"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <h1 className="text-2xl font-semibold text-ink-800 dark:text-slate-100">
-            JudiFiles
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-navy-900 text-amber-600">
+            <Scale className="h-6 w-6" aria-hidden />
+          </span>
+          <h1 className="text-2xl font-bold tracking-tight text-navy-900">
+            Judi<span className="text-amber-600">Files</span>
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             Pronto para organizar e proteger seus documentos jurídicos?
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-xl border border-line bg-white p-6 shadow-card dark:border-slate-800 dark:bg-slate-900">
           {error && (
             <p
               role="alert"
@@ -138,7 +126,7 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
               <button
                 type="submit"
                 disabled={busy || code.length < 6}
-                className="w-full rounded-md bg-ink-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-ink-700 disabled:opacity-60 dark:bg-gold-500 dark:text-slate-900 dark:hover:bg-gold-400"
+                className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:opacity-60 dark:bg-gold-500 dark:text-slate-900 dark:hover:bg-gold-400"
               >
                 {busy ? "Verificando…" : "Confirmar e entrar"}
               </button>
@@ -176,7 +164,7 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
                     }}
                     className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition ${
                       mode === m
-                        ? "bg-white text-ink-900 shadow dark:bg-slate-900 dark:text-slate-100"
+                        ? "bg-white text-navy-900 shadow dark:bg-slate-900 dark:text-slate-100"
                         : "text-slate-600 dark:text-slate-400"
                     }`}
                   >
@@ -220,9 +208,9 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
                 <button
                   type="submit"
                   disabled={busy}
-                  className="w-full rounded-md bg-ink-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-ink-700 disabled:opacity-60 dark:bg-gold-500 dark:text-slate-900 dark:hover:bg-gold-400"
-                >
-                  {busy ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
+                className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:opacity-60 dark:bg-gold-500 dark:text-slate-900 dark:hover:bg-gold-400"
+              >
+                {busy ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
                 </button>
               </form>
             </>

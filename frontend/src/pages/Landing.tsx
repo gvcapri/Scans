@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ArrowRight, Clock3, Lock, Scale, ShieldCheck } from "lucide-react";
 import { api, type Tool } from "../api/client";
 import type { Route } from "../components/Layout";
 
@@ -9,25 +10,29 @@ type Props = {
 
 const DESTAQUES = [
   {
-    icon: "🔒",
+    icon: Lock,
     title: "Cifrado em repouso",
     text: "Cada arquivo é gravado com criptografia por usuário — nem o disco expõe o documento.",
+    tag: "AES-256",
   },
   {
-    icon: "⏱️",
+    icon: Clock3,
     title: "Expurgo automático",
     text: "Tudo é apagado em 24 horas, sem ação manual — regra de retenção alinhada à LGPD.",
+    tag: "24 horas",
   },
   {
-    icon: "🛡️",
+    icon: ShieldCheck,
     title: "Acesso com 2FA",
     text: "Conta protegida por senha e verificação em duas etapas pelo app autenticador.",
+    tag: "2 etapas",
   },
 ];
 
 /**
- * Apresentação pública (Fase de produção): quem chega sem sessão vê esta
- * página em vez de uma tela de login crua. As ferramentas ficam atrás do
+ * Apresentação pública: quem chega sem sessão vê esta página em vez de uma
+ * tela de login crua. Visual executivo claro do JudiFiles (canvas slate,
+ * cartões brancos, azul-marinho e âmbar). As ferramentas ficam atrás do
  * cadeado — clicar pede login e, depois da autenticação, o usuário cai
  * exatamente na ferramenta que tentou abrir (return-to).
  */
@@ -42,35 +47,27 @@ export default function Landing({ onEnter }: Props) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-ink-50 text-ink-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-screen bg-canvas text-navy-900">
       {/* Cabeçalho */}
-      <header className="bg-ink-800 text-white dark:bg-ink-900/70">
+      <header className="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7">
-              <path
-                d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5l8-3z"
-                fill="#16324f"
-                stroke="#c9a227"
-                strokeWidth="1.4"
-              />
-              <path
-                d="M8.5 12l2.3 2.4 4.7-5"
-                fill="none"
-                stroke="#c9a227"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="text-lg font-semibold tracking-tight">
-              Judi<span className="text-gold-400">Files</span>
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-navy-900 text-amber-600">
+              <Scale className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="leading-tight">
+              <span className="block text-lg font-bold tracking-tight text-navy-900">
+                Judi<span className="text-amber-600">Files</span>
+              </span>
+              <span className="hidden text-[11px] text-slate-500 sm:block">
+                Tecnologia a serviço da Justiça
+              </span>
             </span>
           </div>
           <button
             type="button"
             onClick={() => onEnter(null, "login")}
-            className="rounded-md bg-white/12 px-4 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+            className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-navy-900 transition hover:border-slate-300 hover:bg-slate-50"
           >
             Entrar
           </button>
@@ -79,14 +76,14 @@ export default function Landing({ onEnter }: Props) {
 
       {/* Hero */}
       <section className="mx-auto max-w-6xl px-4 py-14 text-center">
-        <p className="mb-3 text-sm font-medium uppercase tracking-widest text-gold-600 dark:text-gold-400">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-amber-600">
           Documentos jurídicos com sigilo
         </p>
-        <h1 className="mx-auto max-w-3xl text-3xl font-semibold leading-tight text-ink-800 sm:text-4xl dark:text-slate-100">
+        <h1 className="mx-auto max-w-3xl text-3xl font-bold leading-tight tracking-tight text-navy-900 sm:text-4xl">
           Converta, redija, compare e organize PDFs sem tirar o arquivo do
           seu controle
         </h1>
-        <p className="mx-auto mt-4 max-w-2xl text-sm text-slate-600 sm:text-base dark:text-slate-400">
+        <p className="mx-auto mt-4 max-w-2xl text-sm text-slate-600 sm:text-base">
           Tudo processado com armazenamento cifrado, isolamento por usuário e
           expurgo automático em 24 horas. Crie sua conta e comece em segundos.
         </p>
@@ -94,14 +91,15 @@ export default function Landing({ onEnter }: Props) {
           <button
             type="button"
             onClick={() => onEnter(null, "login")}
-            className="rounded-md bg-ink-800 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-ink-700 dark:bg-gold-500 dark:text-slate-900 dark:hover:bg-gold-400"
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-600"
           >
             Entrar na conta
+            <ArrowRight className="h-4 w-4" aria-hidden />
           </button>
           <button
             type="button"
             onClick={() => onEnter(null, "register")}
-            className="rounded-md border border-slate-300 px-6 py-2.5 text-sm font-medium text-ink-800 transition hover:border-gold-400 dark:border-slate-700 dark:text-slate-200"
+            className="rounded-lg border border-line bg-white px-6 py-3 text-sm font-semibold text-navy-900 transition hover:border-slate-300 hover:bg-slate-50"
           >
             Criar conta
           </button>
@@ -110,28 +108,36 @@ export default function Landing({ onEnter }: Props) {
 
       {/* Selos de segurança */}
       <section className="mx-auto grid max-w-6xl gap-4 px-4 pb-12 sm:grid-cols-3">
-        {DESTAQUES.map((d) => (
-          <div
-            key={d.title}
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-          >
-            <div className="mb-2 text-xl">{d.icon}</div>
-            <h2 className="text-sm font-semibold text-ink-800 dark:text-slate-100">
-              {d.title}
-            </h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              {d.text}
-            </p>
-          </div>
-        ))}
+        {DESTAQUES.map((d) => {
+          const Icon = d.icon;
+          return (
+            <article
+              key={d.title}
+              className="rounded-xl border border-line bg-white p-5 shadow-card"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                  <Icon className="h-4.5 w-4.5" aria-hidden />
+                </span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                  {d.tag}
+                </span>
+              </div>
+              <h2 className="text-sm font-semibold text-navy-900">{d.title}</h2>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                {d.text}
+              </p>
+            </article>
+          );
+        })}
       </section>
 
       {/* Catálogo de ferramentas (atrás do cadeado) */}
       <section className="mx-auto max-w-6xl px-4 pb-16">
-        <h2 className="text-xl font-semibold text-ink-800 dark:text-slate-100">
+        <h2 className="text-xl font-bold tracking-tight text-navy-900">
           Ferramentas
         </h2>
-        <p className="mb-5 mt-1 text-sm text-slate-600 dark:text-slate-400">
+        <p className="mb-5 mt-1 text-sm text-slate-600">
           Clique para entrar. Recursos ainda não liberados aparecem como{" "}
           <strong>Em breve</strong>.
         </p>
@@ -148,16 +154,14 @@ export default function Landing({ onEnter }: Props) {
                 aria-describedby={`landing-${tool.id}-desc`}
                 className={`group flex flex-col rounded-xl border p-4 text-left transition ${
                   disabled
-                    ? "cursor-not-allowed border-dashed border-slate-300 bg-slate-100/60 dark:border-slate-700 dark:bg-slate-900/40"
-                    : "border-slate-200 bg-white shadow-sm hover:-translate-y-0.5 hover:border-gold-400 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
+                    ? "cursor-not-allowed border-dashed border-slate-300 bg-slate-50 opacity-70"
+                    : "border-line bg-white shadow-card hover:-translate-y-0.5 hover:border-blue-700 hover:shadow-card-hover"
                 }`}
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <span
                     className={`text-base font-semibold ${
-                      disabled
-                        ? "text-slate-500 dark:text-slate-500"
-                        : "text-ink-800 dark:text-slate-100"
+                      disabled ? "text-slate-500" : "text-navy-900"
                     }`}
                   >
                     {tool.name}
@@ -170,22 +174,20 @@ export default function Landing({ onEnter }: Props) {
                     }
                     className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                       disabled
-                        ? "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
-                        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                        ? "bg-slate-200 text-slate-600"
+                        : "bg-emerald-50 text-emerald-600"
                     }`}
                   >
                     {disabled ? "Em breve" : "Disponível"}
                   </span>
                 </div>
-                <p
-                  id={`landing-${tool.id}-desc`}
-                  className="text-sm text-slate-600 dark:text-slate-400"
-                >
+                <p id={`landing-${tool.id}-desc`} className="text-sm text-slate-600">
                   {tool.description}
                 </p>
                 {!disabled && (
-                  <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-gold-600 dark:text-gold-400">
-                    🔒 Entrar para usar
+                  <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+                    <Lock className="h-3.5 w-3.5" aria-hidden />
+                    Entrar para usar
                   </span>
                 )}
               </button>
@@ -194,9 +196,9 @@ export default function Landing({ onEnter }: Props) {
         </div>
       </section>
 
-      <footer className="border-t border-slate-200 py-6 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-        JudiFiles — documentos jurídicos tratados com sigilo. Arquivos cifrados e
-        expurgados automaticamente em 24 h.
+      <footer className="border-t border-line bg-white py-6 text-center text-xs text-slate-500">
+        JudiFiles — Direito mais digital. Justiça mais acessível. v1.0.0 ·
+        Arquivos cifrados e expurgados automaticamente em 24 h.
       </footer>
     </div>
   );
