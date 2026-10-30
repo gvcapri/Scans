@@ -42,6 +42,25 @@ export type Tool = {
 
 export type OcrLanguages = { languages: string[]; default: string };
 
+/** Flags de recurso da instância (/api/meta/features).
+ *  `false` = recurso indisponível aqui — a UI NÃO pode oferecê-lo. */
+export type Features = {
+  ocr: boolean;
+  blind: boolean;
+  compare: boolean;
+  redact: boolean;
+  numbering: boolean;
+  outline: boolean;
+  integrity: boolean;
+  convert: boolean;
+  batch: boolean;
+  search: boolean;
+  cases: boolean;
+  jobs: boolean;
+  registration_open: boolean;
+  public_tools: string[];
+};
+
 export type ScanGroup = {
   type: string;
   label: string;
@@ -198,6 +217,8 @@ export const api = {
   auth,
   tools: () => request<{ tools: Tool[] }>("/meta/tools"),
   languages: () => request<OcrLanguages>("/meta/languages"),
+  /** Flags de recurso da instância — decidem o que fica habilitado na UI. */
+  features: () => request<Features>("/meta/features"),
 
   upload: async (files: File[]): Promise<StoredFile[]> => {
     const form = new FormData();

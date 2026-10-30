@@ -17,7 +17,7 @@ import logging
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.db.models import Job, StoredFile
+from app.db.models import Job, RevokedToken, StoredFile
 from app.db.session import session_scope
 from app.services.indexing import drop_from_index
 
@@ -35,6 +35,7 @@ def purge_expired(
 
     removed_files = 0
     removed_jobs = 0
+    removed_tokens = 0
 
     with session_scope() as db:
         stale = db.scalars(
@@ -76,11 +77,22 @@ def purge_expired(
                 db.delete(job)
                 removed_jobs += 1
 
-    if removed_files or removed_jobs:
+        # revogações de JWT cuja expiração já passou: o próprio token morreu
+        # com elas, a linha não tem mais efeito (só ocupa espaço)
+        stale_tokens = db.scalars(
+            select(RevokedToken).where(RevokedToken.expires_at < now)
+        ).all()
+        for token_row in stale_tokens:
+            db.delete(token_row)
+            removed_tokens += 1
+
+    if removed_files or removed_jobs or removed_tokens:
         log.info(
-            "Expurgo LGPD: %d arquivo(s) e %d job(s) além de %dh removidos",
+            "Expurgo LGPD: %d arquivo(s), %d job(s) e %d revogação(ões) "
+            "além de %dh removidos",
             removed_files,
             removed_jobs,
+            removed_tokens,
             hours,
         )
-    return {"files": removed_files, "jobs": removed_jobs}
+    return {"files": removed_files, "jobs": removed_jobs, "tokens": removed_tokens}

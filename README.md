@@ -146,8 +146,9 @@ padrão abaixo. Mudou o `.env`: `docker compose up -d` (recria a API).
 | `ALLOWED_EMAIL_DOMAINS` | vazio | Domínios permitidos no cadastro, vírgula-separados |
 | `PUBLIC_TOOLS` | vazio | Ferramentas leves públicas (sem login), vírgula-separados |
 
-Outras variáveis úteis na VM: `STORAGE_SECRET` (obrigatório em prod),
-`SECRET_KEY` (JWT), `POSTGRES_PASSWORD`, `MAX_UPLOAD_MB` (padrão 100),
+Outras variáveis da VM: `STORAGE_SECRET` e `SECRET_KEY` (JWT de sessão) —
+**ambos obrigatórios em prod** (32+ caracteres; sem eles a API recusa
+subir), `POSTGRES_PASSWORD`, `MAX_UPLOAD_MB` (padrão 100),
 `RETENTION_HOURS` (expurgo, padrão 24), `TASK_BACKEND=celery`,
 `MAX_CONCURRENT_JOBS` (semáforo de memória, padrão 1), `DB_POOL_SIZE` /
 `DB_MAX_OVERFLOW` (pool por processo, padrão 3/2).

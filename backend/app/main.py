@@ -84,6 +84,10 @@ def _start_purge_loop() -> threading.Event | None:
 
 def create_app() -> FastAPI:
     """Factory da aplicação (usada também nos testes)."""
+    # Em prod a documentação interativa fica fora: é superfície pública
+    # (/docs, /redoc, /openapi.json) expondo o mapa completo de rotas.
+    # Em dev ela continua ligada para desenvolver com Swagger.
+    is_prod = settings.environment.strip().lower() == "prod"
     app = FastAPI(
         title="JudiFiles API",
         version="1.0.0",
@@ -95,6 +99,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         contact={"name": "JudiFiles"},
         license_info={"name": "Proprietário"},
+        docs_url=None if is_prod else "/docs",
+        redoc_url=None if is_prod else "/redoc",
+        openapi_url=None if is_prod else "/openapi.json",
     )
 
     # Middleware de segurança base (robustez de entrada, não bloqueio ativo).

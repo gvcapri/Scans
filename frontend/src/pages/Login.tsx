@@ -6,14 +6,16 @@ type Props = {
   initialError?: string | null;
   /** Volta à apresentação pública (quando o login foi pedido por um cadeado). */
   onBack?: () => void;
+  /** Aba inicial: a landing pode abrir direto em "Criar conta". */
+  initialMode?: "login" | "register";
 };
 
 /**
  * Tela de acesso (Fase 5): entrar, criar conta e concluir com 2FA TOTP.
  * O token volta em cookie httpOnly — nada sensível fica no JavaScript.
  */
-export default function Login({ onAuthenticated, initialError, onBack }: Props) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+export default function Login({ onAuthenticated, initialError, onBack, initialMode }: Props) {
+  const [mode, setMode] = useState<"login" | "register">(initialMode ?? "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [challenge, setChallenge] = useState<string | null>(null);
@@ -33,6 +35,11 @@ export default function Login({ onAuthenticated, initialError, onBack }: Props) 
         // segundo passo do login: código do app autenticador
         const result = await auth.login2fa(challenge, code.trim());
         onAuthenticated(result.user);
+        return;
+      }
+      if (mode === "register") {
+        const created = await auth.register(email.trim(), password);
+        onAuthenticated(created.user);
         return;
       }
       const result = await auth.login(email.trim(), password);
@@ -149,6 +156,9 @@ export default function Login({ onAuthenticated, initialError, onBack }: Props) 
             </form>
           ) : (
             <>
+              <h2 className="mb-4 text-lg font-semibold text-ink-800 dark:text-slate-100">
+                {mode === "login" ? "Entrar na sua conta" : "Criar sua conta"}
+              </h2>
               <div
                 className="mb-5 flex rounded-md bg-slate-100 p-1 dark:bg-slate-800"
                 role="tablist"
@@ -170,7 +180,7 @@ export default function Login({ onAuthenticated, initialError, onBack }: Props) 
                         : "text-slate-600 dark:text-slate-400"
                     }`}
                   >
-                    {m === "login" ? "Acesso" : "Sua conta"}
+                    {m === "login" ? "Entrar" : "Criar conta"}
                   </button>
                 ))}
               </div>

@@ -4,7 +4,7 @@ import type { Route } from "../components/Layout";
 
 type Props = {
   /** Clique numa ferramenta (cadeado) ou no "Entrar": pede login e volta pra cá. */
-  onEnter: (route: Route | null) => void;
+  onEnter: (route: Route | null, mode?: "login" | "register") => void;
 };
 
 const DESTAQUES = [
@@ -69,7 +69,7 @@ export default function Landing({ onEnter }: Props) {
           </div>
           <button
             type="button"
-            onClick={() => onEnter(null)}
+            onClick={() => onEnter(null, "login")}
             className="rounded-md bg-white/12 px-4 py-1.5 text-sm font-medium text-white hover:bg-white/20"
           >
             Entrar
@@ -93,14 +93,14 @@ export default function Landing({ onEnter }: Props) {
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"
-            onClick={() => onEnter(null)}
+            onClick={() => onEnter(null, "login")}
             className="rounded-md bg-ink-800 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-ink-700 dark:bg-gold-500 dark:text-slate-900 dark:hover:bg-gold-400"
           >
             Entrar na conta
           </button>
           <button
             type="button"
-            onClick={() => onEnter(null)}
+            onClick={() => onEnter(null, "register")}
             className="rounded-md border border-slate-300 px-6 py-2.5 text-sm font-medium text-ink-800 transition hover:border-gold-400 dark:border-slate-700 dark:text-slate-200"
           >
             Criar conta

@@ -265,18 +265,28 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    # falha fechada: em prod, STORAGE_SECRET obrigatório, 32+ chars e
-    # nunca o valor de exemplo (mesmo que tenha o comprimento mínimo)
+    # falha fechada: em prod, STORAGE_SECRET e SECRET_KEY obrigatórios,
+    # 32+ chars e nunca o valor de exemplo (mesmo que tenha o comprimento
+    # mínimo). Um SECRET_KEY fraco/hardcoded permite forjar sessões JWT
+    # de qualquer usuário sem senha — por isso a checagem é implacável.
     if settings.environment.lower() == "prod":
         _example = {
             "",
             "dev-only-secret-key-troque-em-producao",
+            "dev-only-jwt-secret-troque-em-producao",
             "troque-este-segredo",
+            "troque-este-jwt-secret",
         }
         if settings.storage_secret in _example or len(settings.storage_secret) < 32:
             raise RuntimeError(
                 "ENVIRONMENT=prod exige STORAGE_SECRET real de 32+ caracteres "
                 "(não pode ser o valor de exemplo). "
+                "Gerar com: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        if settings.secret_key in _example or len(settings.secret_key) < 32:
+            raise RuntimeError(
+                "ENVIRONMENT=prod exige SECRET_KEY real de 32+ caracteres "
+                "(não pode ser o valor de exemplo hardcoded). "
                 "Gerar com: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
             )
     return settings

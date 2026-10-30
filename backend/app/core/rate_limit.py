@@ -21,6 +21,20 @@ from app.core.config import settings
 _WINDOW = 60.0  # janela de 1 minuto
 _lock = threading.Lock()
 _hits: dict[str, deque[float]] = defaultdict(deque)
+_sweeps = 0  # contador para varredura periódica de buckets vencidos
+_SWEEP_EVERY = 512  # varre a cada N tentativas (custo amortizado)
+
+
+def _sweep(now: float) -> None:
+    """Descarta contadores cuja janela inteira já venceu.
+
+    Sem isto, cada chave já vista fica em memória para sempre (deque com
+    floats vencidos) — com IPs rotativos isso crescia sem limite.
+    """
+    cutoff = now - _WINDOW
+    stale = [k for k, b in _hits.items() if not b or b[-1] < cutoff]
+    for key in stale:
+        del _hits[key]
 
 
 def _is_trusted_proxy(host: str | None) -> bool:
@@ -61,6 +75,7 @@ def client_ip(request: Request) -> str:
 
 def allow(key: str, limit_per_min: int) -> bool:
     """Registra uma tentativa; False quando estourou o limite da janela."""
+    global _sweeps
     if limit_per_min <= 0:
         return True
     now = time.monotonic()
@@ -71,6 +86,10 @@ def allow(key: str, limit_per_min: int) -> bool:
         if len(bucket) >= limit_per_min:
             return False
         bucket.append(now)
+        _sweeps += 1
+        if _sweeps >= _SWEEP_EVERY:
+            _sweeps = 0
+            _sweep(now)
         return True
 
 

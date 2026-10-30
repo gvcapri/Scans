@@ -53,6 +53,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lexscan}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lexscan}
       STORAGE_ROOT: /data/storage
       STORAGE_SECRET: ${STORAGE_SECRET:?defina STORAGE_SECRET no .env com 32+ caracteres}
+      # segredo do JWT de sessão — sem ele a API recusa subir em prod
+      # (o default do código é rejeitado pelo fail-closed do config)
+      SECRET_KEY: ${SECRET_KEY:?defina SECRET_KEY no .env com 32+ caracteres}
       # padrão desta VM: tarefas no próprio processo (sem Redis/worker)
       TASK_BACKEND: ${TASK_BACKEND:-local}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
@@ -172,6 +175,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lexscan}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lexscan}
       STORAGE_ROOT: /data/storage
       STORAGE_SECRET: ${STORAGE_SECRET:?defina STORAGE_SECRET no .env com 32+ caracteres}
+      SECRET_KEY: ${SECRET_KEY:?defina SECRET_KEY no .env com 32+ caracteres}
       TASK_BACKEND: celery
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       RETENTION_HOURS: ${RETENTION_HOURS:-24}

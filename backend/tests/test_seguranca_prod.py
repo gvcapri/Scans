@@ -18,6 +18,84 @@ from pathlib import Path
 
 
 # --------------------------------------------------------------------------- #
+# fail-closed: sem ENVIRONMENT=dev explícito, sem usuário local               #
+# --------------------------------------------------------------------------- #
+def test_sem_dev_explicito_nao_ha_fallback_para_usuario_local(monkeypatch):
+    """`ENVIRONMENT` atípico ("staging", "Prod ") não pode desligar a
+    exigência de sessão — antes a condição era `!= "prod"` (fail-open)."""
+    from app.api.deps import _dev_fallback_ok
+    from app.core.config import settings
+
+    original = settings.environment
+    try:
+        for value in ("staging", "production", "Prod ", "homolog"):
+            settings.environment = value
+            assert _dev_fallback_ok() is False, value
+        settings.environment = "dev"
+        assert _dev_fallback_ok() is True
+    finally:
+        settings.environment = original
+
+
+def test_docs_e_openapi_desligados_em_prod():
+    """Em prod não existe /docs, /redoc nem /openapi.json (mapa de rotas
+    público); em dev continuam disponíveis."""
+    from app.core.config import settings
+    from app.main import create_app
+
+    original = settings.environment
+    try:
+        settings.environment = "prod"
+        prod_app = create_app()
+        assert prod_app.docs_url is None
+        assert prod_app.redoc_url is None
+        assert prod_app.openapi_url is None
+
+        settings.environment = "dev"
+        dev_app = create_app()
+        assert dev_app.docs_url == "/docs"
+        assert dev_app.openapi_url == "/openapi.json"
+    finally:
+        settings.environment = original
+
+
+def test_rate_limit_varre_buckets_vencidos(monkeypatch):
+    """Contadores com janela inteiramente vencida são descartados (memória
+    limitada mesmo com IPs rotativos) e a varredura automática está ligada."""
+    import time as _time
+    from collections import deque
+
+    from app.core import rate_limit
+
+    rate_limit.reset()
+    now = _time.monotonic()
+    rate_limit._hits["velho"] = deque([now - 999])
+    rate_limit._hits["vazio"] = deque()
+    rate_limit._hits["fresco"] = deque([now])
+
+    rate_limit._sweep(now)
+    assert "velho" not in rate_limit._hits, "bucket vencido deve sumir"
+    assert "vazio" not in rate_limit._hits, "bucket sem atividade deve sumir"
+    assert "fresco" in rate_limit._hits, "atividade recente é preservada"
+
+    # a varredura dispara de fato dentro de `allow` a cada _SWEEP_EVERY
+    swept: list[float] = []
+    monkeypatch.setattr(rate_limit, "_sweep", swept.append)
+    rate_limit.reset()
+    rate_limit._sweeps = 0
+    for i in range(rate_limit._SWEEP_EVERY + 1):
+        assert rate_limit.allow(f"ip-{i}", 5) is True
+    assert len(swept) == 1, "sweep automático deve rodar uma vez"
+
+    # e o limite da janela continua valendo
+    rate_limit.reset()
+    for _ in range(3):
+        assert rate_limit.allow("ip-fixo", 3) is True
+    assert rate_limit.allow("ip-fixo", 3) is False, "limite respeitado"
+    rate_limit.reset()
+
+
+# --------------------------------------------------------------------------- #
 # 401 — allowlist mínima                                                       #
 # --------------------------------------------------------------------------- #
 def test_rota_protegida_sem_sessao_devolve_401(client):
@@ -31,6 +109,25 @@ def test_rotas_publicas_continuam_abertas(client):
     client.cookies.clear()
     for path in ("/api/meta/health", "/api/meta/features", "/api/meta/tools"):
         assert client.get(path).status_code == 200, path
+
+
+def test_public_tools_so_aceita_leitura(client, monkeypatch):
+    """PUBLIC_TOOLS é allowlist de leitura: um POST não "fica público"
+    só por bater com o prefixo da ferramenta."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "public_tools", "compare")
+    client.cookies.clear()
+
+    # GET pode passar da allowlist pública (chega na rota; 401/422/etc.
+    # dependem da rota, o que importa aqui é NÃO ser 401 de middleware)
+    get = client.get("/api/compare")
+    assert get.status_code != 401 or get.json().get("code") != "unauthorized"
+
+    # POST é recusado pelo middleware com o mesmo 401 de "sem sessão"
+    post = client.post("/api/compare", json={})
+    assert post.status_code == 401
+    assert post.json()["code"] == "unauthorized"
 
 
 # --------------------------------------------------------------------------- #

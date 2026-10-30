@@ -55,11 +55,19 @@ DISABLED_BY_FLAG = {
 PUBLIC_TOOLS = []  # type: list[str]
 
 
+# Métodos que uma ferramenta pública pode usar: só leitura (sem gravação,
+# sem exclusão). POST/PUT/PATCH/DELETE nunca passam por PUBLIC_TOOLS.
+_READ_ONLY_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
 def _is_public_route(path: str, method: str) -> bool:
     """True só para métodos públicos (read-only, sem gravação)."""
     if path in PUBLIC_ROUTES:
         return True
-    # allowlist de ferramentas leves (ex.: GET /api/meta/*)
+    # allowlist de ferramentas leves (ex.: GET /api/meta/*) — restrita a
+    # leitura: um POST não pode virar "público" só por bater com o prefixo
+    if method not in _READ_ONLY_METHODS:
+        return False
     for tool in settings.features.public_tools or []:
         if path.startswith(f"/api/{tool}/") or path == f"/api/{tool}":
             return True
@@ -86,9 +94,14 @@ def setup_modsecurity(app: FastAPI) -> None:
 
         # Todas as rotas /api/* exigem sessão
         if path.startswith("/api/"):
-            token = request.cookies.get("lexscan_token") or request.headers.get(
-                "authorization", ""
-            )
+            from app.core.security import cookie_names
+
+            token = ""
+            for name in cookie_names():
+                token = request.cookies.get(name) or ""
+                if token:
+                    break
+            token = token or request.headers.get("authorization", "")
             if not token.startswith("Bearer "):
                 token = token.strip()
             if not token:

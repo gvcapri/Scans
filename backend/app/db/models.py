@@ -40,6 +40,21 @@ class User(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class RevokedToken(Base):
+    """JWTs assinados já invalidados (logout e desafios 2FA usados).
+
+    Guarda apenas o `jti` até o `exp` do próprio token: depois disso o JWT
+    expirou sozinho e a linha sai no expurgo LGPD. É o que faz o logout
+    desvaler de verdade um token que o cliente ainda tenha em mãos.
+    """
+
+    __tablename__ = "revoked_tokens"
+
+    jti: Mapped[str] = mapped_column(String(32), primary_key=True)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class CaseFolder(Base):
     """Pasta de processo/cliente (usada a partir da Fase 4)."""
 

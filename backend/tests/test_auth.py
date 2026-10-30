@@ -229,3 +229,94 @@ def test_token_expirado_e_forjado_sao_rejeitados():
     # finalidade trocada: um desafio 2FA não serve de sessão
     challenge = create_token("usuario", "2fa", minutes=5)
     assert decode_token(challenge, "session") is None
+
+
+# --------------------------------------------------------------------------- #
+# revogação de sessão (logout desfaz o token, não só o cookie)                #
+# --------------------------------------------------------------------------- #
+def test_logout_revoga_o_token_mesmo_conservado_pelo_cliente(client):
+    """Após o logout, reenviar o mesmo Bearer não restaura a sessão.
+
+    Regressão da auditoria: antes, o logout só limpava o cookie — um token
+    capturado continuava válido até o `exp` (12 h).
+    """
+    body = _register(client, "revoga@exemplo.adv.br")
+    token = body["token"]
+
+    # sessão funciona antes do logout
+    ok = client.post(
+        "/api/auth/2fa/enable", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert ok.status_code == 200, "Bearer autentica antes do logout"
+
+    out = client.post("/api/auth/logout")
+    assert out.status_code == 200
+
+    # o MESMO token, ainda dentro do prazo de validade, agora é recusado
+    reuse = client.post(
+        "/api/auth/2fa/enable", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert reuse.status_code == 401, "token revogado no logout deve morrer na hora"
+
+    # e o login novo volta a funcionar (só a sessão antiga morreu)
+    again = client.post(
+        "/api/auth/login",
+        json={"email": "revoga@exemplo.adv.br", "password": "senha-forte-123"},
+    )
+    assert again.status_code == 200
+    assert again.json()["token"] != token
+
+
+def test_cookie_da_sessao_usa_prefixo_host_em_prod(monkeypatch):
+    """Em prod o cookie sai como `__Host-lexscan_token` (Secure + Path=/
+    + sem Domain): subdomínio não consegue injetá-lo. Fora de prod fica o
+    nome simples (http não aceita o prefixo) e o legado continua legível."""
+    from app.core.config import settings
+    from app.core.security import COOKIE_NAME, cookie_name, cookie_names
+
+    original = settings.environment
+    try:
+        settings.environment = "prod"
+        assert cookie_name() == "__Host-" + COOKIE_NAME
+        assert cookie_names() == ("__Host-" + COOKIE_NAME, COOKIE_NAME)
+
+        settings.environment = "dev"
+        assert cookie_name() == COOKIE_NAME
+        assert cookie_names() == (COOKIE_NAME,)
+    finally:
+        settings.environment = original
+
+
+def test_desafio_2fa_e_de_uso_unico(client):
+    """O challenge do login 2FA não pode ser trocado por uma segunda sessão."""
+    import pyotp
+
+    _register(client, "replay@exemplo.adv.br")
+    client.post("/api/auth/logout")
+
+    # liga o 2FA para o login devolver challenge
+    client.post("/api/auth/login", json={"email": "replay@exemplo.adv.br", "password": "senha-forte-123"})
+    enable = client.post("/api/auth/2fa/enable").json()
+    secret = enable["secret"]
+    client.post(
+        "/api/auth/2fa/confirm",
+        json={"challenge": enable["challenge"], "code": pyotp.TOTP(secret).now()},
+    )
+
+    client.post("/api/auth/logout")
+    step1 = client.post(
+        "/api/auth/login",
+        json={"email": "replay@exemplo.adv.br", "password": "senha-forte-123"},
+    ).json()
+    first = client.post(
+        "/api/auth/login/2fa",
+        json={"challenge": step1["challenge"], "code": pyotp.TOTP(secret).now()},
+    )
+    assert first.status_code == 200
+
+    # replay do mesmo desafio (mesmo com código novo) é recusado
+    replay = client.post(
+        "/api/auth/login/2fa",
+        json={"challenge": step1["challenge"], "code": pyotp.TOTP(secret).now()},
+    )
+    assert replay.status_code == 401, "desafio usado não pode virar outra sessão"

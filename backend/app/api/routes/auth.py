@@ -22,14 +22,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import current_user, session_user
+from app.api.deps import current_user, decode_live_claims, revoke_token, session_user
 from app.core.config import settings
 from app.core.rate_limit import require_within
 from app.core.security import (
-    COOKIE_NAME,
     TWOFA_MINUTES,
     challenge_token,
-    decode_token,
+    cookie_name,
+    cookie_names,
     hash_password,
     new_totp_secret,
     session_token,
@@ -67,7 +67,7 @@ class ChallengePayload(BaseModel):
 
 def _set_cookie(response: Response, token: str) -> None:
     response.set_cookie(
-        key=COOKIE_NAME,
+        key=cookie_name(),
         value=token,
         max_age=60 * 60 * 12,
         httponly=True,
@@ -106,11 +106,33 @@ def register(
     if settings.environment.lower() == "prod" and email.endswith("@lexscan.local"):
         raise HTTPException(status_code=400, detail="E-mail não permitido.")
 
+    # Regras de cadastro validadas NO BACKEND (o frontend nunca é a fonte):
+    # REGISTRATION_OPEN=false fecha o cadastro (só convidados) e
+    # ALLOWED_EMAIL_DOMAINS restringe o domínio quando configurado.
+    if not settings.features.registration_open:
+        raise HTTPException(
+            status_code=403, detail="Cadastro temporariamente fechado."
+        )
+    allowed = settings.allowed_email_domains.strip().lower()
+    if allowed:
+        domains = {d.strip() for d in allowed.split(",") if d.strip()}
+        if email.rsplit("@", 1)[-1] not in domains:
+            raise HTTPException(
+                status_code=403, detail="E-mail não permitido neste domínio."
+            )
+
+    # Argon2 ANTES da checagem de duplicidade: o custo de resposta é o
+    # mesmo com e-mail livre ou ocupado — fecha o canal de tempo na
+    # enumeração de usuários. O 409 continua sendo exposto por UX: sem
+    # fluxo de verificação por e-mail não há como informar "conta já
+    # existe" sem revelar a existência (mitigado por rate limit por IP).
+    password_hash = hash_password(payload.password)
+
     existing = db.scalar(select(User).where(User.email == email))
     if existing is not None:
         raise HTTPException(status_code=409, detail="Já existe uma conta com esse e-mail.")
 
-    user = User(email=email, password_hash=hash_password(payload.password))
+    user = User(email=email, password_hash=password_hash)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -152,17 +174,33 @@ def login(
 @router.post("/login/2fa", summary="Concluir login com código TOTP")
 def login_two_fa(
     payload: ChallengePayload,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ) -> dict:
-    user_id = decode_token(payload.challenge, "2fa")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Desafio expirado. Refaça o login.")
+    # força bruta do código TOTP: limite por IP + desafio (mesma política
+    # do login — sem isto, 6 dígitos seriam tentativos sem restrição)
+    require_within(
+        request, "login-2fa", f"{_ip(request)}|{payload.challenge[:16]}",
+        settings.auth_rate_limit_per_min,
+    )
+    # desafio de uso único: só vale enquanto não foi trocado por uma sessão
+    claims = decode_live_claims(db, payload.challenge, "2fa")
+    if not claims:
+        raise HTTPException(
+            status_code=401,
+            detail="Desafio expirado ou já usado. Refaça o login.",
+        )
+    user_id = str(claims.get("sub") or "")
     user = db.get(User, user_id)
     if user is None or not user.totp_secret:
         raise HTTPException(status_code=401, detail="2FA não configurado.")
     if not verify_totp(user.totp_secret, payload.code):
         raise HTTPException(status_code=401, detail="Código incorreto ou expirado.")
+
+    # desafio de uso único: revogado assim que concluído (o mesmo challenge
+    # não pode trocar outro código por uma segunda sessão)
+    revoke_token(db, payload.challenge, "2fa")
 
     token = session_token(user.id)
     _set_cookie(response, token)
@@ -170,8 +208,21 @@ def login_two_fa(
 
 
 @router.post("/logout", summary="Sair (limpa a sessão)")
-def logout(response: Response) -> dict:
-    response.delete_cookie(COOKIE_NAME, path="/")
+def logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Limpa o cookie **e revoga o token** (jti): o JWT em mãos do
+    cliente deixa de valer imediatamente, não só no navegador."""
+    from app.api.deps import _session_token
+
+    token = _session_token(request)
+    if token:
+        revoke_token(db, token, "session")
+    # apaga o nome atual e o legado (deploys anteriores ao __Host-)
+    for name in cookie_names():
+        response.delete_cookie(name, path="/")
     return {"ok": True}
 
 
@@ -206,12 +257,14 @@ def confirm_two_fa(
     db: Session = Depends(get_db),
     user: User = Depends(session_user),
 ) -> dict:
-    subject = decode_token(payload.challenge, "2fa-setup")
+    claims = decode_live_claims(db, payload.challenge, "2fa-setup")
+    subject = str(claims.get("sub")) if claims else None
     if not subject or not subject.startswith(f"{user.id}:"):
         raise HTTPException(status_code=400, detail="Desafio expirado. Comece de novo.")
     secret = subject.split(":", 1)[1]
     if not verify_totp(secret, payload.code):
         raise HTTPException(status_code=400, detail="Código incorreto — confira o app autenticador.")
+    revoke_token(db, payload.challenge, "2fa-setup")  # desafio de uso único
     user.totp_secret = secret
     db.commit()
     return {"ok": True, "two_factor_enabled": True}

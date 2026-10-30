@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import time
+import uuid
 
 import jwt
 import pyotp
@@ -28,6 +29,25 @@ SESSION_HOURS = 12
 CHALLENGE_MINUTES = 15
 TWOFA_MINUTES = 5
 COOKIE_NAME = "lexscan_token"
+
+
+def cookie_name() -> str:
+    """Nome do cookie de sessão.
+
+    Em prod usa o prefixo `__Host-` (exige Secure, Path=/ e sem Domain):
+    um subdomínio hostileiro não consegue sobrescrever/injetar o cookie da
+    sessão — blindagem contra cookie-tossing. Fora de prod (http) o prefixo
+    não é aceito pelo navegador, então mantém o nome simples.
+    """
+    if settings.environment.lower() == "prod":
+        return "__Host-" + COOKIE_NAME
+    return COOKIE_NAME
+
+
+def cookie_names() -> tuple[str, ...]:
+    """Nomes a ler/apagar: o atual + o legado (sessões anteriores ao deploy)."""
+    current = cookie_name()
+    return (current, COOKIE_NAME) if current != COOKIE_NAME else (COOKIE_NAME,)
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 
@@ -78,17 +98,36 @@ def needs_rehash(hashed: str) -> bool:
 def create_token(subject: str, purpose: str, minutes: int | None = None) -> str:
     now = int(time.time())
     lifetime = (minutes or SESSION_HOURS * 60) * 60
-    payload = {"sub": subject, "purpose": purpose, "iat": now, "exp": now + lifetime}
+    payload = {
+        "sub": subject,
+        "purpose": purpose,
+        # id único do token: é o que permite revogar (logout / desafio usado)
+        "jti": uuid.uuid4().hex,
+        "iat": now,
+        "exp": now + lifetime,
+    }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
-def decode_token(token: str, purpose: str) -> str | None:
-    """Decodifica e valida finalidade; devolve o subject ou None."""
+def decode_claims(token: str, purpose: str) -> dict | None:
+    """Valida assinatura/expiração/finalidade e devolve o payload completo.
+
+    É daqui que `jti` e `exp` saem para a revogação; o resto do código
+    continua usando `decode_token` (só o subject).
+    """
     try:
         data = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
     except jwt.InvalidTokenError:
         return None
     if data.get("purpose") != purpose:
+        return None
+    return data
+
+
+def decode_token(token: str, purpose: str) -> str | None:
+    """Decodifica e valida finalidade; devolve o subject ou None."""
+    data = decode_claims(token, purpose)
+    if data is None:
         return None
     return str(data.get("sub") or "") or None
 
