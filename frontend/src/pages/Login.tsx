@@ -12,8 +12,11 @@ type Props = {
 };
 
 /**
- * Tela de acesso (Fase 5): entrar, criar conta e concluir com 2FA TOTP.
+ * Tela de acesso: entrar, criar conta e concluir com 2FA TOTP.
  * O token volta em cookie httpOnly — nada sensível fica no JavaScript.
+ *
+ * Visual executivo claro (o mesmo do app); sem variantes escuras legadas,
+ * que deixavam a marca e o botão primário ilegíveis.
  */
 export default function Login({ onAuthenticated, initialError, onBack, initialMode }: Props) {
   const [mode, setMode] = useState<"login" | "register">(initialMode ?? "login");
@@ -59,17 +62,16 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
 
   const input =
     "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-navy-900 " +
-    "placeholder:text-slate-400 focus:border-blue-700 focus:outline-none focus:ring-2 " +
-    "focus:ring-blue-700/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
+    "placeholder:text-slate-400 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700/25";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10 dark:bg-slate-950">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
       <div className="w-full max-w-md">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
-            className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-ink-800 dark:text-slate-400 dark:hover:text-slate-100"
+            className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-navy-900"
           >
             ← Voltar
           </button>
@@ -81,16 +83,16 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
           <h1 className="text-2xl font-bold tracking-tight text-navy-900">
             Judi<span className="text-amber-600">Files</span>
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-slate-600">
             Pronto para organizar e proteger seus documentos jurídicos?
           </p>
         </div>
 
-        <div className="rounded-xl border border-line bg-white p-6 shadow-card dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-xl border border-line bg-white p-6 shadow-card">
           {error && (
             <p
               role="alert"
-              className="mb-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+              className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
             >
               {error}
             </p>
@@ -99,16 +101,16 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
           {challenge ? (
             <form onSubmit={submit} className="space-y-4">
               <div>
-                <h2 className="text-lg font-semibold text-ink-800 dark:text-slate-100">
+                <h2 className="text-lg font-semibold text-navy-900">
                   Verificação em duas etapas
                 </h2>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                <p className="mt-1 text-sm text-slate-600">
                   Para maior segurança, confirme o código de 6 dígitos gerado pelo seu
                   app autenticador.
                 </p>
               </div>
               <div>
-                <label htmlFor="otp" className="mb-1 block text-sm font-medium text-ink-800 dark:text-slate-200">
+                <label htmlFor="otp" className="mb-1 block text-sm font-medium text-navy-900">
                   Código
                 </label>
                 <input
@@ -126,7 +128,7 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
               <button
                 type="submit"
                 disabled={busy || code.length < 6}
-                className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:opacity-60 dark:bg-gold-500 dark:text-slate-900 dark:hover:bg-gold-400"
+                className="w-full rounded-md bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-60"
               >
                 {busy ? "Verificando…" : "Confirmar e entrar"}
               </button>
@@ -137,18 +139,18 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
                   setCode("");
                   setError(null);
                 }}
-                className="w-full text-center text-sm text-slate-500 hover:underline dark:text-slate-400"
+                className="w-full text-center text-sm text-slate-500 hover:underline"
               >
                 Voltar
               </button>
             </form>
           ) : (
             <>
-              <h2 className="mb-4 text-lg font-semibold text-ink-800 dark:text-slate-100">
+              <h2 className="mb-4 text-lg font-semibold text-navy-900">
                 {mode === "login" ? "Entrar na sua conta" : "Criar sua conta"}
               </h2>
               <div
-                className="mb-5 flex rounded-md bg-slate-100 p-1 dark:bg-slate-800"
+                className="mb-5 flex rounded-md bg-slate-100 p-1"
                 role="tablist"
                 aria-label="Acesso"
               >
@@ -164,8 +166,8 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
                     }}
                     className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition ${
                       mode === m
-                        ? "bg-white text-navy-900 shadow dark:bg-slate-900 dark:text-slate-100"
-                        : "text-slate-600 dark:text-slate-400"
+                        ? "bg-white text-navy-900 shadow"
+                        : "text-slate-600 hover:text-navy-900"
                     }`}
                   >
                     {m === "login" ? "Entrar" : "Criar conta"}
@@ -175,7 +177,7 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
 
               <form onSubmit={submit} className="space-y-4">
                 <div>
-                  <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink-800 dark:text-slate-200">
+                  <label htmlFor="email" className="mb-1 block text-sm font-medium text-navy-900">
                     E-mail
                   </label>
                   <input
@@ -190,7 +192,7 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
                   />
                 </div>
                 <div>
-                  <label htmlFor="password" className="mb-1 block text-sm font-medium text-ink-800 dark:text-slate-200">
+                  <label htmlFor="password" className="mb-1 block text-sm font-medium text-navy-900">
                     Senha
                   </label>
                   <input
@@ -208,16 +210,16 @@ export default function Login({ onAuthenticated, initialError, onBack, initialMo
                 <button
                   type="submit"
                   disabled={busy}
-                className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:opacity-60 dark:bg-gold-500 dark:text-slate-900 dark:hover:bg-gold-400"
-              >
-                {busy ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
+                  className="w-full rounded-md bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-60"
+                >
+                  {busy ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
                 </button>
               </form>
             </>
           )}
         </div>
 
-        <p className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-4 text-center text-xs text-slate-500">
           Suas informações ficam protegidas com criptografia de ponta a ponta e são
           apagadas automaticamente após 24 horas.
         </p>
