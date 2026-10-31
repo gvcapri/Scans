@@ -199,6 +199,14 @@ def delete_job(
         row = db.get(StoredFile, file_id)
         if row:
             row.deleted_at = dt.datetime.now(dt.timezone.utc)
+    # desvincula os arquivos antes do DELETE: mesmo após o soft-delete eles
+    # ainda apontam files.job_id para este job e violariam a FK
+    # files_job_id_fkey (500 ao remover um job com saídas do histórico)
+    (
+        db.query(StoredFile)
+        .filter(StoredFile.job_id == job_id)
+        .update({StoredFile.job_id: None}, synchronize_session=False)
+    )
     db.delete(job)
     db.commit()
     return {"ok": True, "id": job_id}

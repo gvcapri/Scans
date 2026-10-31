@@ -16,9 +16,13 @@ ARG ENABLE_OCR=false
 
 # gcc só durante o pip install (libs C de dependências sem wheel);
 # tesseract entra somente quando ENABLE_OCR=true.
+# ghostscript (binário `gs`) é obrigatório: compressão, divisão e lote
+# falham com "Ghostscript não encontrado" sem ele — antes só existia fora
+# do Docker, quando o teste rodava na máquina local.
 COPY backend/requirements.txt .
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc \
+        ghostscript \
         $([ "$ENABLE_OCR" = "true" ] && echo "tesseract-ocr tesseract-ocr-por") \
     && pip install --no-cache-dir -r requirements.txt \
     && apt-get purge -y gcc \
