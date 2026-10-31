@@ -110,6 +110,13 @@ services:
       args:
         CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-100m}
         API_READ_TIMEOUT: ${API_READ_TIMEOUT:-120s}
+    # valor também em RUNTIME: o entrypoint do nginx faz envsubst no
+    # template a cada start, então trocar CLIENT_MAX_BODY_SIZE na .env
+    # passa a valer com `up -d` (sem rebuild — antes só o build-arg
+    # valia e a imagem antiga mantinha o limite antigo: 413 "volvendo").
+    environment:
+      CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-100m}
+      API_READ_TIMEOUT: ${API_READ_TIMEOUT:-120s}
     depends_on:
       api:
         condition: service_healthy
