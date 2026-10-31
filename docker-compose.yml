@@ -108,7 +108,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-25m}
+        CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-100m}
         API_READ_TIMEOUT: ${API_READ_TIMEOUT:-120s}
     depends_on:
       api:
